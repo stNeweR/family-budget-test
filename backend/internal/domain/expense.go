@@ -41,12 +41,23 @@ func (c Category) Valid() bool {
 	return false
 }
 
-// User is a family member identified by their Telegram ID.
+// User is a family member identified by their Telegram ID. A user whose
+// InviteUserID is nil is a family head; members point at the head of the
+// family they joined.
 type User struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	FullName string `json:"full_name"`
+	UserID       int64  `json:"user_id"`
+	Username     string `json:"username"`
+	FullName     string `json:"full_name"`
+	InviteUserID *int64 `json:"invite_user_id,omitempty"`
+	// PanelToken unlocks the web panel for the head and must never be exposed.
+	PanelToken string `json:"-"`
+	// InviteCode is the payload of the head's invitation deep link.
+	InviteCode string `json:"-"`
 }
+
+// IsHead reports whether the user heads a family (i.e. is not a member of
+// another head).
+func (u User) IsHead() bool { return u.InviteUserID == nil }
 
 // Expense is a single spending record.
 type Expense struct {
@@ -85,6 +96,6 @@ type ExpenseFilter struct {
 
 // Domain errors shared across layers so HTTP and the bot can map them.
 var (
-	ErrNotFound = errors.New("expense not found")
+	ErrNotFound = errors.New("not found")
 	ErrInvalid  = errors.New("invalid input")
 )

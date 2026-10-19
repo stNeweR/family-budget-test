@@ -96,6 +96,17 @@ type GetUpdatesParams struct {
 	AllowedUpdates []string `json:"allowed_updates,omitempty"`
 }
 
+// BotCommand is one entry of the bot's command menu shown in Telegram clients.
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// SetMyCommandsParams configures a setMyCommands call.
+type SetMyCommandsParams struct {
+	Commands []BotCommand `json:"commands"`
+}
+
 type responseParameters struct {
 	RetryAfter int `json:"retry_after"`
 }

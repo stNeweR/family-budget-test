@@ -82,6 +82,20 @@ seed-reset:
 seed-docker:
 	docker compose run --rm --entrypoint /app/seed backend -reset
 
+# --- Telegram bot -----------------------------------------------------------
+
+## bot-commands: register the bot command menu in Telegram (reads .env locally)
+bot-commands:
+	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; cd backend && go run ./cmd/botcommands
+
+## bot-commands-show: show the commands currently registered in Telegram
+bot-commands-show: 
+	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; cd backend && go run ./cmd/botcommands -show
+
+## bot-commands-docker: register the bot command menu via the backend image
+bot-commands-docker:
+	docker compose run --rm --no-deps --entrypoint /app/botcommands backend
+
 # --- Local development ------------------------------------------------------
 
 ## run: run the backend locally
@@ -113,6 +127,10 @@ build-backend:
 test:
 	cd backend && go test ./...
 
+## test-integration: run PostgreSQL integration tests (TEST_DATABASE_URL must point to a throwaway migrated DB)
+test-integration:
+	cd backend && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./internal/store/ -run Postgres -v
+
 ## lint: run go vet and frontend typecheck
 lint:
 	cd backend && go vet ./...
@@ -136,5 +154,6 @@ env:
 
 .PHONY: help up down logs ps tools migrate-up migrate-down migrate-status \
 	migrate-up-docker migrate-down-docker migrate-status-docker seed seed-reset \
-	seed-docker run web-dev tunnel build build-frontend build-backend test lint \
-	fmt tidy clean env
+	seed-docker run web-dev tunnel bot-commands bot-commands-show \
+	bot-commands-docker build build-frontend build-backend test test-integration \
+	lint fmt tidy clean env

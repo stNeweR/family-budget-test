@@ -138,6 +138,82 @@ func TestGetUpdates(t *testing.T) {
 	}
 }
 
+func TestGetMe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/botTOKEN/getMe" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":     true,
+			"result": User{ID: 42, IsBot: true, Username: "family_budget_bot", FirstName: "Family Budget"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("TOKEN", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	me, err := c.GetMe(context.Background())
+	if err != nil {
+		t.Fatalf("GetMe: %v", err)
+	}
+	if me.ID != 42 || me.Username != "family_budget_bot" || !me.IsBot {
+		t.Fatalf("unexpected bot info: %+v", me)
+	}
+}
+
+func TestSetMyCommands(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/botTOKEN/setMyCommands" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var body SetMyCommandsParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if len(body.Commands) != 2 {
+			t.Fatalf("unexpected commands: %+v", body.Commands)
+		}
+		if body.Commands[0].Command != "start" || body.Commands[0].Description != "Старт" {
+			t.Errorf("unexpected first command: %+v", body.Commands[0])
+		}
+		if body.Commands[1].Command != "panel" || body.Commands[1].Description != "Панель" {
+			t.Errorf("unexpected second command: %+v", body.Commands[1])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("TOKEN", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	err := c.SetMyCommands(context.Background(), []BotCommand{
+		{Command: "start", Description: "Старт"},
+		{Command: "panel", Description: "Панель"},
+	})
+	if err != nil {
+		t.Fatalf("SetMyCommands: %v", err)
+	}
+}
+
+func TestGetMyCommands(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/botTOKEN/getMyCommands" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":     true,
+			"result": []BotCommand{{Command: "start", Description: "Старт"}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("TOKEN", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	commands, err := c.GetMyCommands(context.Background())
+	if err != nil {
+		t.Fatalf("GetMyCommands: %v", err)
+	}
+	if len(commands) != 1 || commands[0].Command != "start" || commands[0].Description != "Старт" {
+		t.Fatalf("unexpected commands: %+v", commands)
+	}
+}
+
 func TestTransportErrorsDoNotLeakToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := srv.URL

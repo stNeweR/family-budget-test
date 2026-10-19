@@ -60,7 +60,8 @@ func run(log *slog.Logger) error {
 		fmt.Println("[bot] Telegram-бот отключён: не задан TELEGRAM_BOT_TOKEN (панель работает без бота)")
 	} else {
 		tg := telegram.NewClient(cfg.Telegram.BotToken, telegram.WithBaseURL(cfg.Telegram.APIBaseURL))
-		svc := bot.NewService(tg, bot.NewAgent(llm.NewClient(cfg.LLM), st), st, log)
+		svc := bot.NewService(tg, bot.NewAgent(llm.NewClient(cfg.LLM), st), st, log,
+			bot.WithPanelURL(cfg.PanelURL))
 
 		if cfg.Telegram.Mode() == "webhook" {
 			publicURL := cfg.Telegram.WebhookURL + cfg.Telegram.WebhookPath

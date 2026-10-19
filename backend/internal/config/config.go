@@ -13,6 +13,9 @@ import (
 type Config struct {
 	DatabaseURL string
 	HTTPAddr    string
+	// PanelURL is the public base URL of the web panel. The bot builds the
+	// head's access link from it.
+	PanelURL string
 
 	LLM      LLMConfig
 	Telegram TelegramConfig
@@ -61,6 +64,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://family:family@localhost:5432/family?sslmode=disable"),
 		HTTPAddr:    getEnv("HTTP_ADDR", ":8080"),
+		PanelURL:    getEnv("PANEL_URL", "http://localhost:5173"),
 		LLM: LLMConfig{
 			BaseURL:     getEnv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
 			APIKey:      getEnv("LLM_API_KEY", ""),

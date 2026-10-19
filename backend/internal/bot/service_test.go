@@ -29,6 +29,18 @@ type fakeTelegram struct {
 	deleteFailures int
 	batches        [][]telegram.Update
 	getUpdates     []telegram.GetUpdatesParams
+	getMeCalls     int
+	getMeErr       error
+}
+
+func (f *fakeTelegram) GetMe(context.Context) (telegram.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getMeCalls++
+	if f.getMeErr != nil {
+		return telegram.User{}, f.getMeErr
+	}
+	return telegram.User{ID: 42, IsBot: true, Username: "family_budget_bot", FirstName: "Family Budget"}, nil
 }
 
 func (f *fakeTelegram) SendMessage(_ context.Context, params telegram.SendMessageParams) (telegram.Message, error) {
@@ -93,7 +105,7 @@ func newServiceWithSteps(t *testing.T, st *storetest.Memory, tg *fakeTelegram, s
 	agent := NewAgent(&scriptedLLM{steps: steps}, st)
 	agent.now = func() time.Time { return time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC) }
 	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	return NewService(tg, agent, st, log)
+	return NewService(tg, agent, st, log, WithPanelURL("http://panel.test"))
 }
 
 func TestWebhookSecretEnforced(t *testing.T) {
@@ -317,6 +329,245 @@ func TestRunPollingProcessesUpdatesAndAdvancesOffset(t *testing.T) {
 	}
 	if calls[1].Offset != 8 {
 		t.Fatalf("expected offset 8 on second poll, got %d", calls[1].Offset)
+	}
+}
+
+func startUpdate(userID int64, text string) telegram.Update {
+	return telegram.Update{
+		UpdateID: userID,
+		Message: &telegram.Message{
+			MessageID: 42,
+			From:      &telegram.User{ID: userID, FirstName: "Тест"},
+			Chat:      telegram.Chat{ID: userID, Type: "private"},
+			Text:      text,
+		},
+	}
+}
+
+func seedFamily(t *testing.T, st *storetest.Memory, headID, memberID int64, code, token string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := st.UpsertUser(ctx, domain.User{UserID: headID, FullName: "Анна"}); err != nil {
+		t.Fatalf("upsert head: %v", err)
+	}
+	if err := st.BecomeHead(ctx, headID, code, token); err != nil {
+		t.Fatalf("become head: %v", err)
+	}
+	if memberID == 0 {
+		return
+	}
+	if err := st.UpsertUser(ctx, domain.User{UserID: memberID, FullName: "Игорь"}); err != nil {
+		t.Fatalf("upsert member: %v", err)
+	}
+	if err := st.JoinFamily(ctx, memberID, headID); err != nil {
+		t.Fatalf("join family: %v", err)
+	}
+}
+
+func TestStartMakesNewUserHead(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(1, "/start"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "глава семьи") || !strings.Contains(reply, "/invite") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, err := st.GetUser(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	if !u.IsHead() {
+		t.Fatalf("user must be a head: %+v", u)
+	}
+	if len(u.InviteCode) != inviteCodeLength || u.PanelToken == "" {
+		t.Fatalf("credentials not generated: %+v", u)
+	}
+}
+
+func TestStartKeepsMemberRole(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1")
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(2, "/start"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "Вы в семье") || !strings.Contains(reply, "глава — Анна") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 2)
+	if u.InviteUserID == nil || *u.InviteUserID != 1 {
+		t.Fatalf("member role changed: %+v", u)
+	}
+}
+
+func TestStartWithCodeJoinsFamilyAndDropsHeadRole(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 0, "HEADCODE01", "token-1")
+	// User 2 became a head of a one-person family by accident.
+	_ = st.UpsertUser(ctx, domain.User{UserID: 2, FullName: "Игорь"})
+	_ = st.BecomeHead(ctx, 2, "OWNCODE001", "token-2")
+
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+	svc.process(ctx, startUpdate(2, "/start HEADCODE01"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "Теперь вы в семье") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 2)
+	if u.InviteUserID == nil || *u.InviteUserID != 1 {
+		t.Fatalf("user not joined: %+v", u)
+	}
+	if u.InviteCode != "" || u.PanelToken != "" {
+		t.Fatalf("head credentials must be dropped: %+v", u)
+	}
+}
+
+func TestStartWithUnknownCodeFallsBackToHead(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(3, "/start NOSUCHCODE"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "недействительна") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 3)
+	if !u.IsHead() || u.InviteCode == "" {
+		t.Fatalf("fallback head not activated: %+v", u)
+	}
+}
+
+func TestStartWithOwnCode(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 0, "HEADCODE01", "token-1")
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(1, "/start HEADCODE01"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "собственная ссылка") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 1)
+	if u.InviteCode != "HEADCODE01" {
+		t.Fatalf("credentials must not change: %+v", u)
+	}
+}
+
+func TestStartHeadWithMembersCannotJoin(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1") // head 1 has member 2
+	seedFamily(t, st, 5, 0, "HEADCODE05", "token-5")
+
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+	svc.process(ctx, startUpdate(1, "/start HEADCODE05"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "нельзя") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 1)
+	if !u.IsHead() || u.InviteCode != "HEADCODE01" {
+		t.Fatalf("head with members must be unchanged: %+v", u)
+	}
+}
+
+func TestInviteAlwaysPointsToHead(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1")
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(1, "/invite"))
+	headReply := tg.lastMessage().Text
+	if !strings.Contains(headReply, "t.me/family_budget_bot?start=HEADCODE01") {
+		t.Fatalf("unexpected head invite: %q", headReply)
+	}
+
+	svc.process(ctx, startUpdate(2, "/invite"))
+	memberReply := tg.lastMessage().Text
+	if !strings.Contains(memberReply, "t.me/family_budget_bot?start=HEADCODE01") {
+		t.Fatalf("member invite must point to head code: %q", memberReply)
+	}
+
+	if tg.getMeCalls != 1 {
+		t.Fatalf("getMe must be cached, got %d calls", tg.getMeCalls)
+	}
+}
+
+func TestInviteActivatesLegacyHead(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	_ = st.UpsertUser(ctx, domain.User{UserID: 7, FullName: "Старый"})
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(7, "/invite"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "t.me/family_budget_bot?start=") {
+		t.Fatalf("unexpected reply: %q", reply)
+	}
+	u, _ := st.GetUser(ctx, 7)
+	if u.InviteCode == "" || u.PanelToken == "" {
+		t.Fatalf("credentials not generated for legacy head: %+v", u)
+	}
+}
+
+func TestPanelForHeadAndMember(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	seedFamily(t, st, 1, 2, "HEADCODE01", "PANELTOKEN1")
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, st, tg, nil)
+
+	svc.process(ctx, startUpdate(1, "/panel"))
+	headReply := tg.lastMessage().Text
+	if !strings.Contains(headReply, "http://panel.test/?token=PANELTOKEN1") {
+		t.Fatalf("unexpected head panel reply: %q", headReply)
+	}
+
+	svc.process(ctx, startUpdate(2, "/panel"))
+	memberReply := tg.lastMessage().Text
+	if !strings.Contains(memberReply, "только главе") {
+		t.Fatalf("unexpected member panel reply: %q", memberReply)
+	}
+}
+
+func TestUnknownCommandShowsHelpWithoutLLM(t *testing.T) {
+	ctx := t.Context()
+	st := storetest.New()
+	tg := &fakeTelegram{}
+	llmStub := &scriptedLLM{steps: []llm.Message{textMessage("не должно вызываться")}}
+	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	svc := NewService(tg, NewAgent(llmStub, st), st, log)
+
+	svc.process(ctx, startUpdate(1, "/help"))
+
+	reply := tg.lastMessage().Text
+	if !strings.Contains(reply, "/start") || !strings.Contains(reply, "/panel") {
+		t.Fatalf("unexpected help reply: %q", reply)
+	}
+	if llmStub.calls != 0 {
+		t.Fatalf("LLM must not be called for commands, got %d calls", llmStub.calls)
 	}
 }
 

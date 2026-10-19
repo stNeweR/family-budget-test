@@ -74,6 +74,22 @@ func (c *Client) GetWebhookInfo(ctx context.Context) (WebhookInfo, error) {
 	return do[WebhookInfo](ctx, c, "getWebhookInfo", map[string]any{})
 }
 
+// GetMe returns the bot's own account, e.g. to build t.me deep links.
+func (c *Client) GetMe(ctx context.Context) (User, error) {
+	return do[User](ctx, c, "getMe", map[string]any{})
+}
+
+// SetMyCommands replaces the bot's command menu.
+func (c *Client) SetMyCommands(ctx context.Context, commands []BotCommand) error {
+	_, err := do[bool](ctx, c, "setMyCommands", SetMyCommandsParams{Commands: commands})
+	return err
+}
+
+// GetMyCommands returns the bot's current command menu.
+func (c *Client) GetMyCommands(ctx context.Context) ([]BotCommand, error) {
+	return do[[]BotCommand](ctx, c, "getMyCommands", map[string]any{})
+}
+
 // redact hides the bot token that appears in request URLs inside transport
 // errors so it never reaches the logs.
 func (c *Client) redact(err error) error {

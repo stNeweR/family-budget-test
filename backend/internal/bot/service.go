@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/stNeweR/family-budget/internal/domain"
@@ -40,19 +41,37 @@ type TelegramAPI interface {
 	SetWebhook(ctx context.Context, params telegram.SetWebhookParams) error
 	DeleteWebhook(ctx context.Context, dropPending bool) error
 	GetUpdates(ctx context.Context, params telegram.GetUpdatesParams) ([]telegram.Update, error)
+	GetMe(ctx context.Context) (telegram.User, error)
 }
 
 // Service glues the Telegram transport to the AI agent.
 type Service struct {
-	tg    TelegramAPI
-	agent *Agent
-	store store.Store
-	log   *slog.Logger
+	tg       TelegramAPI
+	agent    *Agent
+	store    store.Store
+	log      *slog.Logger
+	panelURL string
+
+	// mu guards the cached bot username resolved via getMe.
+	mu               sync.Mutex
+	botUsernameCache string
+}
+
+// Option customises the bot service.
+type Option func(*Service)
+
+// WithPanelURL sets the public base URL of the web panel.
+func WithPanelURL(url string) Option {
+	return func(s *Service) { s.panelURL = url }
 }
 
 // NewService constructs the bot service.
-func NewService(tg TelegramAPI, agent *Agent, st store.Store, log *slog.Logger) *Service {
-	return &Service{tg: tg, agent: agent, store: st, log: log}
+func NewService(tg TelegramAPI, agent *Agent, st store.Store, log *slog.Logger, opts ...Option) *Service {
+	s := &Service{tg: tg, agent: agent, store: st, log: log, panelURL: "http://localhost:5173"}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // RegisterWebhook points Telegram at the public webhook URL. It is safe to
@@ -201,9 +220,8 @@ func (s *Service) process(ctx context.Context, update telegram.Update) {
 	fmt.Printf("[bot] сообщение от %s (id=%d): %s\n", userLabel(user), user.UserID, clip(text, 200))
 
 	var reply string
-	if isStartCommand(text) {
-		fmt.Printf("[bot] команда /start: %s зарегистрирован\n", userLabel(user))
-		reply = welcomeMessage(user)
+	if cmd, args := parseCommand(text); cmd != "" {
+		reply = s.handleCommand(ctx, user, cmd, args)
 	} else {
 		start := time.Now()
 		var err error
@@ -222,36 +240,6 @@ func (s *Service) process(ctx context.Context, update telegram.Update) {
 	}); err != nil {
 		s.log.Error("send message", "chat_id", msg.Chat.ID, "error", err)
 	}
-}
-
-// isStartCommand reports whether text is Telegram's /start command, possibly
-// addressed as /start@botname in groups.
-func isStartCommand(text string) bool {
-	cmd, _, _ := strings.Cut(text, " ")
-	return cmd == "/start" || strings.HasPrefix(cmd, "/start@")
-}
-
-// welcomeMessage greets a freshly registered user and lists what the bot can do.
-func welcomeMessage(user domain.User) string {
-	name := user.FullName
-	if name == "" {
-		name = user.Username
-	}
-	greeting := "Привет"
-	if name != "" {
-		greeting += ", " + name
-	}
-	return greeting + `! Я бот семейного бюджета.
-
-Просто пиши мне обычным текстом, например:
-- «кофе 350» — запишу трату
-- «такси 1200 вчера» — учту дату
-- «сколько потратил на еду за месяц» — покажу статистику
-- «покажи траты за неделю» — список за период
-- «последнее было не 350, а 450» — исправлю
-- «удали такси» — удалю запись
-
-Все траты можно смотреть в веб-панели.`
 }
 
 func userLabel(u domain.User) string {

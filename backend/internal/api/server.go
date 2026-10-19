@@ -51,13 +51,17 @@ func (s *Server) Handler() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", s.health)
-		r.Get("/users", s.listUsers)
-		r.Route("/expenses", func(r chi.Router) {
-			r.Get("/", s.listExpenses)
-			r.Post("/", s.createExpense)
-			r.Get("/{id}", s.getExpense)
-			r.Patch("/{id}", s.updateExpense)
-			r.Delete("/{id}", s.deleteExpense)
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.auth)
+			r.Get("/users", s.listUsers)
+			r.Route("/expenses", func(r chi.Router) {
+				r.Get("/", s.listExpenses)
+				r.Post("/", s.createExpense)
+				r.Get("/{id}", s.getExpense)
+				r.Patch("/{id}", s.updateExpense)
+				r.Delete("/{id}", s.deleteExpense)
+			})
 		})
 	})
 
@@ -84,13 +88,13 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 	})
 }
 
-// cors is a permissive middleware: the panel is intentionally unauthenticated
-// and is served from a Vite dev server on another port.
+// cors is a permissive middleware: the panel is served from a Vite dev server
+// on another port and authenticates with a Bearer panel token.
 func (s *Server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
