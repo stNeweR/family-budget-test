@@ -40,7 +40,20 @@ type TelegramConfig struct {
 
 // Enabled reports whether the bot can be started.
 func (c TelegramConfig) Enabled() bool {
-	return c.BotToken != "" && c.WebhookURL != ""
+	return c.BotToken != ""
+}
+
+// Mode returns the update delivery mode: "webhook" when a public URL is
+// configured, "polling" for long polling, or "disabled" without a token.
+func (c TelegramConfig) Mode() string {
+	switch {
+	case !c.Enabled():
+		return "disabled"
+	case c.WebhookURL != "":
+		return "webhook"
+	default:
+		return "polling"
+	}
 }
 
 // Load reads configuration from the environment applying sane defaults.

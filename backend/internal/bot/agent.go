@@ -36,10 +36,13 @@ func (a *Agent) Handle(ctx context.Context, user domain.User, text string) (stri
 	}
 
 	for step := 0; step < maxSteps; step++ {
+		start := time.Now()
 		reply, err := a.llm.Chat(ctx, messages, tools())
 		if err != nil {
 			return "", err
 		}
+		fmt.Printf("[agent] шаг %d: ответ LLM за %s (вызовов инструментов: %d)\n",
+			step+1, time.Since(start).Round(time.Millisecond), len(reply.ToolCalls))
 
 		if len(reply.ToolCalls) == 0 {
 			content := strings.TrimSpace(reply.Content)
@@ -56,9 +59,13 @@ func (a *Agent) Handle(ctx context.Context, user domain.User, text string) (stri
 		})
 
 		for _, call := range reply.ToolCalls {
+			fmt.Printf("[agent] инструмент %s, аргументы: %s\n", call.Function.Name, clip(call.Function.Arguments, 200))
 			result, err := a.executeTool(ctx, user, call.Function.Name, call.Function.Arguments)
 			if err != nil {
+				fmt.Printf("[agent] ошибка инструмента %s: %v\n", call.Function.Name, err)
 				result = fmt.Sprintf("Ошибка при выполнении %s: %v", call.Function.Name, err)
+			} else {
+				fmt.Printf("[agent] результат %s: %s\n", call.Function.Name, clip(result, 200))
 			}
 			messages = append(messages, llm.Message{
 				Role:       llm.RoleTool,

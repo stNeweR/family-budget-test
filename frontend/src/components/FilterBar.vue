@@ -45,10 +45,13 @@ function reset() {
 </script>
 
 <template>
-  <div class="filter-bar">
-    <label>
+  <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <label class="flex flex-col gap-1.5 text-xs font-medium text-slate-500">
       <span>Член семьи</span>
-      <select v-model="userId">
+      <select
+        v-model="userId"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+      >
         <option value="">Все</option>
         <option v-for="user in users" :key="user.user_id" :value="user.user_id">
           {{ user.full_name || user.username || user.user_id }}
@@ -56,24 +59,41 @@ function reset() {
       </select>
     </label>
 
-    <label>
+    <label class="flex flex-col gap-1.5 text-xs font-medium text-slate-500">
       <span>Категория</span>
-      <select v-model="category">
+      <select
+        v-model="category"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+      >
         <option value="">Все</option>
         <option v-for="item in CATEGORIES" :key="item" :value="item">{{ item }}</option>
       </select>
     </label>
 
-    <label>
+    <label class="flex flex-col gap-1.5 text-xs font-medium text-slate-500">
       <span>С</span>
-      <input v-model="from" type="date" />
+      <input
+        v-model="from"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+        type="date"
+      />
     </label>
 
-    <label>
+    <label class="flex flex-col gap-1.5 text-xs font-medium text-slate-500">
       <span>По</span>
-      <input v-model="to" type="date" />
+      <input
+        v-model="to"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+        type="date"
+      />
     </label>
 
-    <button class="ghost" type="button" @click="reset">Сбросить</button>
+    <button
+      class="h-[38px] rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      type="button"
+      @click="reset"
+    >
+      Сбросить
+    </button>
   </div>
 </template>

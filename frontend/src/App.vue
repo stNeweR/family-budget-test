@@ -89,23 +89,34 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="layout">
-    <header class="topbar">
+  <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+    <header class="mb-6 flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h1>Семейный бюджет</h1>
-        <p class="subtitle">Траты всех членов семьи</p>
+        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Семейный бюджет</h1>
+        <p class="mt-1 text-sm text-slate-500">Траты всех членов семьи</p>
       </div>
-      <button class="primary" type="button" @click="openCreate">Добавить трату</button>
+      <button
+        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        type="button"
+        @click="openCreate"
+      >
+        Добавить трату
+      </button>
     </header>
 
-    <section class="panel">
+    <section class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <FilterBar v-model="filter" :users="users" />
     </section>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <p
+      v-if="error"
+      class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+    >
+      {{ error }}
+    </p>
 
-    <section class="panel">
-      <p v-if="loading" class="muted">Загрузка…</p>
+    <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <p v-if="loading" class="px-4 py-12 text-center text-sm text-slate-500">Загрузка…</p>
       <ExpenseTable
         v-else
         :expenses="expenses"

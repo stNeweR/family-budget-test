@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -44,6 +46,7 @@ func (s *Server) Handler() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	r.Use(s.logRequests)
 	r.Use(s.cors)
 
 	r.Route("/api", func(r chi.Router) {
@@ -63,6 +66,22 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	return r
+}
+
+// logRequests prints one line per API call so server activity is visible in
+// docker logs.
+func (s *Server) logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
+
+		path := r.URL.Path
+		if r.URL.RawQuery != "" {
+			path += "?" + r.URL.RawQuery
+		}
+		fmt.Printf("[http] %s %s -> %d (%s)\n", r.Method, path, ww.Status(), time.Since(start).Round(time.Millisecond))
+	})
 }
 
 // cors is a permissive middleware: the panel is intentionally unauthenticated

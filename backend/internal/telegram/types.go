@@ -88,6 +88,14 @@ type SetWebhookParams struct {
 	DropPendingUpdates bool     `json:"drop_pending_updates,omitempty"`
 }
 
+// GetUpdatesParams configures a getUpdates call (long polling).
+type GetUpdatesParams struct {
+	Offset         int64    `json:"offset,omitempty"`
+	Limit          int      `json:"limit,omitempty"`
+	Timeout        int      `json:"timeout,omitempty"`
+	AllowedUpdates []string `json:"allowed_updates,omitempty"`
+}
+
 type responseParameters struct {
 	RetryAfter int `json:"retry_after"`
 }

@@ -14,7 +14,7 @@
 | Миграции | goose (CLI) |
 | LLM | OpenRouter (OpenAI-совместимый API), `openrouter/free` |
 | Бот | собственный пакет `internal/telegram`, доставка через webhook |
-| Фронтенд | Vue 3 + TypeScript + Vite (dev-сервер) |
+| Фронтенд | Vue 3 + TypeScript + Vite + Tailwind CSS 4 (dev-сервер) |
 | Запуск | docker compose + Makefile |
 
 ## Структура
@@ -39,13 +39,14 @@ Makefile
 ## Быстрый старт
 
 ```bash
-cp .env.example .env          # заполните LLM_API_KEY и Telegram-переменные
+cp .env.example .env          # заполните LLM_API_KEY и TELEGRAM_BOT_TOKEN
 make up                       # postgres + миграции + backend + frontend
 make seed-docker              # (опционально) демо-данные
 ```
 
 Миграции применяет отдельный one-shot контейнер `migrate` до старта backend —
-ручной шаг не нужен.
+ручной шаг не нужен. Бот с одним `TELEGRAM_BOT_TOKEN` работает через long polling,
+без публичного URL и туннеля.
 
 - Панель: <http://localhost:5173>
 - Backend API: <http://localhost:8080>
@@ -91,21 +92,37 @@ make seed-docker             # или: docker compose run --rm --entrypoint /app
 Приложение всё равно проверяет схему при старте (`CheckSchema`) и падает с понятным
 сообщением, если миграции не применены (например, при локальном запуске без compose).
 
-### Telegram-бот (webhook)
+### Telegram-бот: long polling или webhook
 
-Бот принимает апдейты вебхуком на `POST /telegram/webhook`. Апдейт проверяется по заголовку
-`X-Telegram-Bot-Api-Secret-Token`, сервер отвечает `200` сразу, обработка идёт асинхронно.
-На старте приложение вызывает `setWebhook` на `<TELEGRAM_WEBHOOK_URL><TELEGRAM_WEBHOOK_PATH>`.
+Режим выбирается автоматически по конфигу:
 
-Для локальной разработки нужен публичный HTTPS-URL, например через localtunnel:
+- **long polling** (по умолчанию) — если задан только `TELEGRAM_BOT_TOKEN`. Бот сам опрашивает
+  `getUpdates` с таймаутом 50 секунд; публичный URL и туннель не нужны. На старте вызывается
+  `deleteWebhook` (иначе `getUpdates` возвращает 409), накопленные апдейты не теряются и
+  обрабатываются после рестарта. Обработка последовательная; при сбоях — backoff, при 429 —
+  пауза из `retry_after`.
+- **webhook** — если дополнительно задан `TELEGRAM_WEBHOOK_URL`. Бот принимает апдейты на
+  `POST /telegram/webhook`, проверяет заголовок `X-Telegram-Bot-Api-Secret-Token`, отвечает
+  `200` сразу (обработка асинхронная) и вызывает `setWebhook` на
+  `<TELEGRAM_WEBHOOK_URL><TELEGRAM_WEBHOOK_PATH>`.
+
+Для webhook-режима нужен публичный HTTPS-URL, например через localtunnel:
 
 ```bash
 make tunnel    # npx localtunnel --port 8080
 # полученный https://... адрес прописать в TELEGRAM_WEBHOOK_URL и перезапустить backend
 ```
 
-Если `TELEGRAM_BOT_TOKEN`/`TELEGRAM_WEBHOOK_URL` не заданы — бот просто не поднимается,
-API и панель работают.
+Если `TELEGRAM_BOT_TOKEN` не задан — бот просто не поднимается, API и панель работают.
+
+### Команды бота
+
+- `/start` — регистрация в системе и приветствие со списком возможностей. Обрабатывается без
+  обращения к LLM, пользователь сразу появляется в веб-панели (и в групповых чатах работает
+  `/start@имя_бота`).
+
+Все остальные сообщения — обычный текст, который уходит в ИИ-агента: «кофе 350»,
+«сколько потратил на еду за месяц», «удали такси».
 
 ### ИИ-агент
 

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -54,6 +56,12 @@ func (c *Client) SetWebhook(ctx context.Context, params SetWebhookParams) error 
 	return err
 }
 
+// GetUpdates fetches updates via long polling. The call is held open by
+// Telegram for up to Timeout seconds when no updates are available.
+func (c *Client) GetUpdates(ctx context.Context, params GetUpdatesParams) ([]Update, error) {
+	return do[[]Update](ctx, c, "getUpdates", params)
+}
+
 // DeleteWebhook removes the webhook. When dropPending is true queued updates
 // are discarded as well.
 func (c *Client) DeleteWebhook(ctx context.Context, dropPending bool) error {
@@ -64,6 +72,15 @@ func (c *Client) DeleteWebhook(ctx context.Context, dropPending bool) error {
 // GetWebhookInfo returns the current webhook configuration.
 func (c *Client) GetWebhookInfo(ctx context.Context) (WebhookInfo, error) {
 	return do[WebhookInfo](ctx, c, "getWebhookInfo", map[string]any{})
+}
+
+// redact hides the bot token that appears in request URLs inside transport
+// errors so it never reaches the logs.
+func (c *Client) redact(err error) error {
+	if err == nil || c.token == "" || !strings.Contains(err.Error(), c.token) {
+		return err
+	}
+	return errors.New(strings.ReplaceAll(err.Error(), c.token, "***"))
 }
 
 func do[T any](ctx context.Context, c *Client, method string, payload any) (T, error) {
@@ -77,13 +94,13 @@ func do[T any](ctx context.Context, c *Client, method string, payload any) (T, e
 	url := fmt.Sprintf("%s/bot%s/%s", c.baseURL, c.token, method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return zero, fmt.Errorf("build %s request: %w", method, err)
+		return zero, fmt.Errorf("build %s request: %w", method, c.redact(err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return zero, fmt.Errorf("call %s: %w", method, err)
+		return zero, fmt.Errorf("call %s: %w", method, c.redact(err))
 	}
 	defer resp.Body.Close()
 

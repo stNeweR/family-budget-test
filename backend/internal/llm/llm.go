@@ -84,7 +84,6 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient builds a client from configuration.
 func NewClient(cfg config.LLMConfig) *Client {
 	return &Client{
 		baseURL: cfg.BaseURL,

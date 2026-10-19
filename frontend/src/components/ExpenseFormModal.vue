@@ -27,6 +27,9 @@ const form = reactive<{
   comment: '',
 });
 
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-slate-100 disabled:text-slate-500';
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -70,13 +73,19 @@ function submit() {
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <h2>{{ expense ? 'Изменить трату' : 'Новая трата' }}</h2>
-      <form @submit.prevent="submit">
-        <label>
+  <div
+    v-if="open"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+    @click.self="emit('close')"
+  >
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <h2 class="mb-4 text-lg font-semibold text-slate-900">
+        {{ expense ? 'Изменить трату' : 'Новая трата' }}
+      </h2>
+      <form class="grid gap-4" @submit.prevent="submit">
+        <label class="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
           <span>Член семьи</span>
-          <select v-model="form.user_id" :disabled="!!expense" required>
+          <select v-model="form.user_id" :class="inputClass" :disabled="!!expense" required>
             <option disabled value="">Выберите</option>
             <option v-for="user in users" :key="user.user_id" :value="user.user_id">
               {{ user.full_name || user.username || user.user_id }}
@@ -84,31 +93,48 @@ function submit() {
           </select>
         </label>
 
-        <label>
+        <label class="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
           <span>Сумма, ₽</span>
-          <input v-model.number="form.amount" type="number" min="1" step="0.01" required />
+          <input v-model.number="form.amount" :class="inputClass" type="number" min="1" step="0.01" required />
         </label>
 
-        <label>
+        <label class="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
           <span>Категория</span>
-          <select v-model="form.category">
+          <select v-model="form.category" :class="inputClass">
             <option v-for="item in CATEGORIES" :key="item" :value="item">{{ item }}</option>
           </select>
         </label>
 
-        <label>
+        <label class="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
           <span>Дата</span>
-          <input v-model="form.spent_at" type="date" required />
+          <input v-model="form.spent_at" :class="inputClass" type="date" required />
         </label>
 
-        <label>
+        <label class="flex flex-col gap-1.5 text-sm font-medium text-slate-600">
           <span>Комментарий</span>
-          <input v-model="form.comment" type="text" maxlength="200" placeholder="необязательно" />
+          <input
+            v-model="form.comment"
+            :class="inputClass"
+            type="text"
+            maxlength="200"
+            placeholder="необязательно"
+          />
         </label>
 
-        <div class="modal-actions">
-          <button class="ghost" type="button" @click="emit('close')">Отмена</button>
-          <button class="primary" type="submit">Сохранить</button>
+        <div class="mt-1 flex justify-end gap-2">
+          <button
+            class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            type="button"
+            @click="emit('close')"
+          >
+            Отмена
+          </button>
+          <button
+            class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            type="submit"
+          >
+            Сохранить
+          </button>
         </div>
       </form>
     </div>

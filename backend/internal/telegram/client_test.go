@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,6 +88,71 @@ func TestSetWebhook(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("SetWebhook: %v", err)
+	}
+}
+
+func TestGetUpdates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/botTOKEN/getUpdates" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var body GetUpdatesParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if body.Offset != 7 || body.Limit != 100 || body.Timeout != 50 {
+			t.Errorf("unexpected payload: %+v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"result": []Update{
+				{
+					UpdateID: 7,
+					Message: &Message{
+						MessageID: 1,
+						From:      &User{ID: 5, FirstName: "Мама"},
+						Chat:      Chat{ID: 5},
+						Text:      "кофе 350",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("TOKEN", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	updates, err := c.GetUpdates(context.Background(), GetUpdatesParams{
+		Offset:         7,
+		Limit:          100,
+		Timeout:        50,
+		AllowedUpdates: []string{"message"},
+	})
+	if err != nil {
+		t.Fatalf("GetUpdates: %v", err)
+	}
+	if len(updates) != 1 || updates[0].UpdateID != 7 {
+		t.Fatalf("unexpected updates: %+v", updates)
+	}
+	if updates[0].Message == nil || updates[0].Message.Text != "кофе 350" {
+		t.Fatalf("unexpected message: %+v", updates[0].Message)
+	}
+}
+
+func TestTransportErrorsDoNotLeakToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+
+	c := NewClient("123456:SECRET", WithBaseURL(url), WithHTTPClient(srv.Client()))
+	_, err := c.GetUpdates(context.Background(), GetUpdatesParams{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("bot token leaked in error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "***") {
+		t.Fatalf("expected redacted token placeholder, got: %v", err)
 	}
 }
 
