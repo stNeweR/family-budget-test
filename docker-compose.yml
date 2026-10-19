@@ -1,0 +1,85 @@
+name: family-budget
+
+# Shared build config: the migrate one-shot and the backend run the same image.
+x-backend: &backend
+  image: family-budget-backend:local
+  build:
+    context: .
+    dockerfile: docker/go/Dockerfile
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-family}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-family}
+      POSTGRES_DB: ${POSTGRES_DB:-family}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-family} -d ${POSTGRES_DB:-family}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot goose runner: applies migrations before the backend starts.
+  # $$DATABASE_URL is escaped so the shell inside the container expands it.
+  migrate:
+    <<: *backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://family:family@postgres:5432/family?sslmode=disable}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - goose -dir /migrations postgres "$$DATABASE_URL" up
+    volumes:
+      - ./backend/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Go API + Telegram webhook. The image also contains seed and goose, used via
+  # one-off runs:
+  #   docker compose run --rm --entrypoint goose backend -dir /migrations postgres "$URL" status
+  #   docker compose run --rm --entrypoint /app/seed backend -reset
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://family:family@postgres:5432/family?sslmode=disable}
+      HTTP_ADDR: ":8080"
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Vite dev server. Source is mounted for hot-reload; node_modules stays in an
+  # anonymous volume so the container uses its own (alpine) install.
+  frontend:
+    image: family-budget-frontend:local
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    environment:
+      VITE_PROXY_TARGET: http://backend:8080
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

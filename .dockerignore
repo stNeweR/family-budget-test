@@ -1,0 +1,7 @@
+# Build context stays small and reproducible.
+.git
+**/node_modules
+frontend/dist
+backend/bin
+**/*.md
+.gitignore

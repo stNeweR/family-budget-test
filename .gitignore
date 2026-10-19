@@ -1,0 +1,15 @@
+# dependencies
+frontend/node_modules/
+
+# frontend build output (static bundle for optional production use)
+frontend/dist/
+
+# environment
+.env
+*.local
+
+# Go build output
+backend/bin/
+
+# misc
+.DS_Store
