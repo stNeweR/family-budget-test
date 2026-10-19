@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,18 +14,16 @@ import (
 	"github.com/stNeweR/family-budget/internal/entity"
 	"github.com/stNeweR/family-budget/internal/testsupport"
 	expenseuc "github.com/stNeweR/family-budget/internal/usecase/expense"
-	familyuc "github.com/stNeweR/family-budget/internal/usecase/family"
+	usersuc "github.com/stNeweR/family-budget/internal/usecase/users"
 )
 
 func newTestServer(t *testing.T, env testsupport.Env) http.Handler {
 	t.Helper()
-	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	services := Services{
-		Expenses: expenseuc.New(env.Expenses),
-		Family:   familyuc.New(env.Users),
-		Pinger:   env.DB,
-	}
-	return New(services, log).Handler()
+	return New(
+		expenseuc.New(env.Expenses),
+		usersuc.New(env.Users),
+		env.DB,
+	).Handler()
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {

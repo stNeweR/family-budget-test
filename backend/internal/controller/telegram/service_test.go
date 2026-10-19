@@ -16,7 +16,7 @@ import (
 	"github.com/stNeweR/family-budget/internal/testsupport"
 	agentuc "github.com/stNeweR/family-budget/internal/usecase/agent"
 	expenseuc "github.com/stNeweR/family-budget/internal/usecase/expense"
-	familyuc "github.com/stNeweR/family-budget/internal/usecase/family"
+	usersuc "github.com/stNeweR/family-budget/internal/usecase/users"
 	tgapi "github.com/stNeweR/family-budget/pkg/telegram"
 )
 
@@ -103,7 +103,7 @@ func newServiceWithSteps(t *testing.T, env testsupport.Env, tg *fakeTelegram, st
 	t.Helper()
 	agent := agentuc.New(&scriptedLLM{steps: steps}, expenseuc.New(env.Expenses))
 	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	return NewService(tg, familyuc.New(env.Users), agent, log, WithPanelURL("http://panel.test"))
+	return NewService(tg, usersuc.New(env.Users), agent, log, WithPanelURL("http://panel.test"))
 }
 
 type scriptedLLM struct {
@@ -246,7 +246,7 @@ func TestStartCommandRegistersUserWithoutLLM(t *testing.T) {
 	tg := &fakeTelegram{}
 	llmStub := &scriptedLLM{steps: []entity.Message{textMessage("не должно вызываться")}}
 	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	svc := NewService(tg, familyuc.New(env.Users), agentuc.New(llmStub, expenseuc.New(env.Expenses)), log)
+	svc := NewService(tg, usersuc.New(env.Users), agentuc.New(llmStub, expenseuc.New(env.Expenses)), log)
 
 	svc.process(ctx, tgapi.Update{
 		UpdateID: 1,
@@ -581,7 +581,7 @@ func TestUnknownCommandShowsHelpWithoutLLM(t *testing.T) {
 	tg := &fakeTelegram{}
 	llmStub := &scriptedLLM{steps: []entity.Message{textMessage("не должно вызываться")}}
 	log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	svc := NewService(tg, familyuc.New(env.Users), agentuc.New(llmStub, expenseuc.New(env.Expenses)), log)
+	svc := NewService(tg, usersuc.New(env.Users), agentuc.New(llmStub, expenseuc.New(env.Expenses)), log)
 
 	svc.process(ctx, startUpdate(1, "/help"))
 

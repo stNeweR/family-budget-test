@@ -28,7 +28,7 @@ type Expense interface {
 	Total(ctx context.Context, filter entity.ExpenseFilter) (float64, int, error)
 }
 
-type Family interface {
+type Users interface {
 	EnsureUser(ctx context.Context, user entity.User) (entity.User, error)
 
 	Start(ctx context.Context, user entity.User, code string) (entity.StartResult, error)

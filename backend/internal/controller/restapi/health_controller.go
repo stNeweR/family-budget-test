@@ -1,9 +1,27 @@
 package restapi
 
-import "net/http"
+import (
+	"net/http"
 
-func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	if err := s.services.Pinger.Ping(r.Context()); err != nil {
+	"github.com/go-chi/chi/v5"
+
+	"github.com/stNeweR/family-budget/internal/repo"
+)
+
+type healthController struct {
+	pinger repo.Pinger
+}
+
+func newHealthController(pinger repo.Pinger) *healthController {
+	return &healthController{pinger: pinger}
+}
+
+func (c *healthController) Register(r chi.Router) {
+	r.Get("/health", c.handle)
+}
+
+func (c *healthController) handle(w http.ResponseWriter, r *http.Request) {
+	if err := c.pinger.Ping(r.Context()); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database unavailable")
 		return
 	}

@@ -38,7 +38,7 @@ type TelegramAPI interface {
 
 type Service struct {
 	tg       TelegramAPI
-	family   usecase.Family
+	users    usecase.Users
 	agent    usecase.Agent
 	log      *slog.Logger
 	panelURL string
@@ -53,8 +53,8 @@ func WithPanelURL(url string) Option {
 	return func(s *Service) { s.panelURL = url }
 }
 
-func NewService(tg TelegramAPI, family usecase.Family, agent usecase.Agent, log *slog.Logger, opts ...Option) *Service {
-	s := &Service{tg: tg, family: family, agent: agent, log: log, panelURL: "http://localhost:5173"}
+func NewService(tg TelegramAPI, users usecase.Users, agent usecase.Agent, log *slog.Logger, opts ...Option) *Service {
+	s := &Service{tg: tg, users: users, agent: agent, log: log, panelURL: "http://localhost:5173"}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -187,7 +187,7 @@ func (s *Service) process(ctx context.Context, update tgapi.Update) {
 		Username: msg.From.Username,
 		FullName: fullName(*msg.From),
 	}
-	if _, err := s.family.EnsureUser(ctx, user); err != nil {
+	if _, err := s.users.EnsureUser(ctx, user); err != nil {
 		s.log.Error("ensure user", "user_id", user.UserID, "error", err)
 	}
 

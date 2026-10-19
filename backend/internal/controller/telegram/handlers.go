@@ -40,7 +40,7 @@ func (s *Service) runCommand(ctx context.Context, user entity.User, cmd, args st
 }
 
 func (s *Service) runStart(ctx context.Context, user entity.User, code string) (string, error) {
-	res, err := s.family.Start(ctx, user, code)
+	res, err := s.users.Start(ctx, user, code)
 	if err != nil {
 		return "", err
 	}
@@ -73,7 +73,7 @@ func (s *Service) runStart(ctx context.Context, user entity.User, code string) (
 }
 
 func (s *Service) runInvite(ctx context.Context, user entity.User) (string, error) {
-	res, err := s.family.Invite(ctx, user.UserID)
+	res, err := s.users.Invite(ctx, user.UserID)
 	if err != nil {
 		return "", err
 	}

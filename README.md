@@ -69,7 +69,7 @@ make seed-docker              # (опционально) демо-данные
 
 ## Как это работает
 
-### Два образа, четыре контейнера
+### Четыре контейнера
 
 - `postgres` — база данных.
 - `migrate` — one-shot сервис из того же образа backend: выполняет `goose up` и завершается.
@@ -103,8 +103,7 @@ make migrate-up-docker       # применить вручную (обычно �
 make seed-docker             # или: docker compose run --rm --entrypoint /app/seed backend -reset
 ```
 
-Приложение всё равно проверяет схему при старте (`CheckSchema`) и падает с понятным
-сообщением, если миграции не применены (например, при локальном запуске без compose).
+Приложение всё равно проверяет схему при старте (`CheckSchema`) и падает с сообщением, если миграции не применены (например, при локальном запуске без compose).
 
 ### Telegram-бот: long polling или webhook
 
@@ -120,7 +119,7 @@ make seed-docker             # или: docker compose run --rm --entrypoint /app
   `200` сразу (обработка асинхронная) и вызывает `setWebhook` на
   `<TELEGRAM_WEBHOOK_URL><TELEGRAM_WEBHOOK_PATH>`.
 
-Для webhook-режима нужен публичный HTTPS-URL, например через localtunnel:
+Для webhook-режима нужен публичный HTTPS-URL, например через (localtunnel)[https://theboroer.github.io/localtunnel-www/], (serveo)[https://serveo.net/] или (ngrok)[https://ngrok.com/]:
 
 ```bash
 make tunnel    # npx localtunnel --port 8080

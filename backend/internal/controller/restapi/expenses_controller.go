@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/stNeweR/family-budget/internal/entity"
+	"github.com/stNeweR/family-budget/internal/usecase"
 )
 
 const dateLayout = "2006-01-02"
@@ -30,13 +31,33 @@ type expensePatchInput struct {
 	Comment  *string  `json:"comment"`
 }
 
-func (s *Server) listExpenses(w http.ResponseWriter, r *http.Request) {
+type expensesController struct {
+	expense usecase.Expense
+}
+
+func newExpensesController(expense usecase.Expense) *expensesController {
+	return &expensesController{
+		expense: expense,
+	}
+}
+
+func (c *expensesController) Register(r chi.Router) {
+	r.Route("/expenses", func(r chi.Router) {
+		r.Get("/", c.list)
+		r.Post("/", c.create)
+		r.Get("/{id}", c.get)
+		r.Patch("/{id}", c.update)
+		r.Delete("/{id}", c.delete)
+	})
+}
+
+func (c *expensesController) list(w http.ResponseWriter, r *http.Request) {
 	filter, err := parseFilter(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	expenses, err := s.services.Expenses.List(r.Context(), filter)
+	expenses, err := c.expense.List(r.Context(), filter)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -44,7 +65,7 @@ func (s *Server) listExpenses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, expenses)
 }
 
-func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
+func (c *expensesController) create(w http.ResponseWriter, r *http.Request) {
 	var in expenseInput
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -55,7 +76,7 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	created, err := s.services.Expenses.Create(r.Context(), expense)
+	created, err := c.expense.Create(r.Context(), expense)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -63,12 +84,12 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-func (s *Server) getExpense(w http.ResponseWriter, r *http.Request) {
+func (c *expensesController) get(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
-	expense, err := s.services.Expenses.Get(r.Context(), id)
+	expense, err := c.expense.Get(r.Context(), id)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -76,7 +97,7 @@ func (s *Server) getExpense(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, expense)
 }
 
-func (s *Server) updateExpense(w http.ResponseWriter, r *http.Request) {
+func (c *expensesController) update(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r)
 	if !ok {
 		return
@@ -91,7 +112,7 @@ func (s *Server) updateExpense(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	expense, err := s.services.Expenses.Update(r.Context(), id, patch)
+	expense, err := c.expense.Update(r.Context(), id, patch)
 	if err != nil {
 		writeServiceError(w, err)
 		return
@@ -99,12 +120,12 @@ func (s *Server) updateExpense(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, expense)
 }
 
-func (s *Server) deleteExpense(w http.ResponseWriter, r *http.Request) {
+func (c *expensesController) delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r)
 	if !ok {
 		return
 	}
-	if err := s.services.Expenses.Delete(r.Context(), id); err != nil {
+	if err := c.expense.Delete(r.Context(), id); err != nil {
 		writeServiceError(w, err)
 		return
 	}

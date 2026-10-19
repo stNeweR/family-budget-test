@@ -2,7 +2,6 @@ package restapi
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -13,15 +12,14 @@ import (
 	"github.com/stNeweR/family-budget/internal/usecase"
 )
 
-type Services struct {
-	Expenses usecase.Expense
-	Family   usecase.Family
-	Pinger   repo.Pinger
+type apiControllers struct {
+	expenses *expensesController
+	users    *usersController
+	health   *healthController
 }
 
 type Server struct {
-	services       Services
-	log            *slog.Logger
+	controllers    apiControllers
 	webhookPath    string
 	webhookHandler http.HandlerFunc
 }
@@ -35,8 +33,19 @@ func WithWebhook(path string, handler http.HandlerFunc) Option {
 	}
 }
 
-func New(services Services, log *slog.Logger, opts ...Option) *Server {
-	s := &Server{services: services, log: log}
+func New(
+	expenses usecase.Expense,
+	users usecase.Users,
+	pinger repo.Pinger,
+	opts ...Option,
+) *Server {
+	s := &Server{
+		controllers: apiControllers{
+			expenses: newExpensesController(expenses),
+			users:    newUsersController(users),
+			health:   newHealthController(pinger),
+		},
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -45,22 +54,13 @@ func New(services Services, log *slog.Logger, opts ...Option) *Server {
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
-	r.Use(s.logRequests)
-	r.Use(s.cors)
+	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	r.Use(s.logRequests, s.cors)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/health", s.health)
-		r.Get("/users", s.listUsers)
-		r.Route("/expenses", func(r chi.Router) {
-			r.Get("/", s.listExpenses)
-			r.Post("/", s.createExpense)
-			r.Get("/{id}", s.getExpense)
-			r.Patch("/{id}", s.updateExpense)
-			r.Delete("/{id}", s.deleteExpense)
-		})
+		s.controllers.expenses.Register(r)
+		s.controllers.users.Register(r)
+		s.controllers.health.Register(r)
 	})
 
 	if s.webhookHandler != nil {
