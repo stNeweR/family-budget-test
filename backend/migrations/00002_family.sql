@@ -1,7 +1,4 @@
 -- +goose Up
--- Family model: a user with invite_user_id IS NULL is a family head; members
--- point at the head of the family they joined. invite_code is the payload of
--- the invitation deep link.
 ALTER TABLE users
     ADD COLUMN invite_user_id BIGINT REFERENCES users (user_id) ON DELETE SET NULL,
     ADD COLUMN invite_code    TEXT UNIQUE;

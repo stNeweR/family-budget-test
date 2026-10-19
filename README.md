@@ -13,7 +13,7 @@
 | БД | PostgreSQL 16 |
 | Миграции | goose (CLI) |
 | LLM | OpenRouter (OpenAI-совместимый API), `openrouter/free` |
-| Бот | собственный пакет `internal/telegram`, доставка через webhook |
+| Бот | собственный пакет `pkg/telegram`, доставка через webhook или long polling |
 | Фронтенд | Vue 3 + TypeScript + Vite + Tailwind CSS 4 (dev-сервер) |
 | Запуск | docker compose + Makefile |
 
@@ -21,11 +21,25 @@
 
 ```
 backend/
-  cmd/server/main.go     # REST API + Telegram webhook
+  cmd/app/main.go        # запуск приложения
   cmd/seed/main.go       # генератор тестовых данных
+  cmd/botcommands/main.go # меню команд бота в Telegram
   internal/
-    config/   domain/   store/   api/
-    bot/      llm/      telegram/
+    app/                 # composition root и graceful shutdown
+    entity/              # сущности, ошибки, LLM-типы, фильтры
+    repo/
+      contracts.go       # контракты репозиториев
+      persistent/        # PostgreSQL-репозитории
+      webapi/llm/        # LLM-адаптер
+    usecase/             # use cases и агент
+    controller/
+      restapi/           # REST API
+      telegram/          # транспорт и команды Telegram
+    testsupport/         # общая тестовая PostgreSQL
+  pkg/
+    postgres/            # пул и schema/reset
+    telegram/            # низкоуровневый Telegram-клиент
+  config/                # конфигурация из env
   migrations/            # goose SQL
 frontend/                # Vue 3 + TS (Vite dev server)
 docker/
@@ -186,5 +200,10 @@ make web-dev
 ## Тесты
 
 ```bash
-make test    # unit-тесты: store-совместимый fake, REST-хендлеры, агент (LLM и Telegram замоканы), клиенты
+make test-db  # поднять postgres, создать и мигрировать family_test
+make test     # все тесты на реальной PostgreSQL family_test
 ```
+
+`make up` также создаёт и мигрирует `family_test` в том же контейнере `postgres`.
+Тесты выполняются с `-p 1`, потому что используют общую тестовую БД. Для запуска
+из IDE задайте `TEST_DATABASE_URL=postgres://family:family@localhost:5432/family_test?sslmode=disable`.

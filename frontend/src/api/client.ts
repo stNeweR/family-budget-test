@@ -27,9 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       const body = (await response.json()) as { error?: string };
       if (body.error) message = body.error;
-    } catch {
-      // ignore non-JSON error bodies
-    }
+    } catch {}
     throw new ApiError(response.status, message);
   }
 

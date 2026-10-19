@@ -1,10 +1,3 @@
-// Command botcommands registers the bot's command menu in Telegram so the
-// commands and their descriptions are shown in the client UI.
-//
-// Typical usage:
-//
-//	go run ./cmd/botcommands        # push the command list from internal/bot
-//	go run ./cmd/botcommands -show  # print what is registered right now
 package main
 
 import (
@@ -13,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/stNeweR/family-budget/internal/bot"
-	"github.com/stNeweR/family-budget/internal/config"
-	"github.com/stNeweR/family-budget/internal/telegram"
+	"github.com/stNeweR/family-budget/config"
+	telegramcontroller "github.com/stNeweR/family-budget/internal/controller/telegram"
+	tgapi "github.com/stNeweR/family-budget/pkg/telegram"
 )
 
 func main() {
@@ -38,7 +31,7 @@ func run(show bool) error {
 	}
 
 	ctx := context.Background()
-	client := telegram.NewClient(cfg.Telegram.BotToken, telegram.WithBaseURL(cfg.Telegram.APIBaseURL))
+	client := tgapi.NewClient(cfg.Telegram.BotToken, tgapi.WithBaseURL(cfg.Telegram.APIBaseURL))
 
 	if show {
 		commands, err := client.GetMyCommands(ctx)
@@ -54,7 +47,7 @@ func run(show bool) error {
 		return nil
 	}
 
-	commands := bot.CommandList()
+	commands := telegramcontroller.CommandList()
 	if len(commands) == 0 {
 		return fmt.Errorf("command list is empty")
 	}
@@ -67,7 +60,7 @@ func run(show bool) error {
 	return nil
 }
 
-func printCommands(commands []telegram.BotCommand) {
+func printCommands(commands []tgapi.BotCommand) {
 	for _, c := range commands {
 		fmt.Printf("  /%s — %s\n", c.Command, c.Description)
 	}

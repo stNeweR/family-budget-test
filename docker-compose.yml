@@ -1,6 +1,4 @@
 name: family-budget
-
-# Shared build config: the migrate one-shot and the backend run the same image.
 x-backend: &backend
   image: family-budget-backend:local
   build:
@@ -23,9 +21,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-  # One-shot goose runner: applies migrations before the backend starts.
-  # $$DATABASE_URL is escaped so the shell inside the container expands it.
   migrate:
     <<: *backend
     env_file:
@@ -42,11 +37,6 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
-
-  # Go API + Telegram webhook. The image also contains seed and goose, used via
-  # one-off runs:
-  #   docker compose run --rm --entrypoint goose backend -dir /migrations postgres "$URL" status
-  #   docker compose run --rm --entrypoint /app/seed backend -reset
   backend:
     <<: *backend
     restart: unless-stopped
@@ -63,9 +53,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-
-  # Vite dev server. Source is mounted for hot-reload; node_modules stays in an
-  # anonymous volume so the container uses its own (alpine) install.
   frontend:
     image: family-budget-frontend:local
     build:

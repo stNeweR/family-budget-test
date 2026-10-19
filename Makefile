@@ -1,9 +1,11 @@
 SHELL := /bin/bash
 
-# Connection strings: DB_URL_* are for local tools, DOCKER_* target compose.
-DB_URL_LOCAL  ?= postgres://family:family@localhost:5432/family?sslmode=disable
-DB_URL_DOCKER ?= postgres://family:family@postgres:5432/family?sslmode=disable
-MIGRATIONS    ?= backend/migrations
+DB_URL_LOCAL      ?= postgres://family:family@localhost:5432/family?sslmode=disable
+DB_URL_DOCKER     ?= postgres://family:family@postgres:5432/family?sslmode=disable
+TEST_DB_NAME      ?= family_test
+TEST_DB_URL_LOCAL ?= postgres://family:family@localhost:5432/family_test?sslmode=disable
+TEST_DB_URL_DOCKER ?= postgres://family:family@postgres:5432/family_test?sslmode=disable
+MIGRATIONS        ?= backend/migrations
 
 .DEFAULT_GOAL := help
 
@@ -12,11 +14,11 @@ help:
 	@echo "Доступные команды:"
 	@grep -E '^## [a-z].*:' $(MAKEFILE_LIST) | sed 's/## //; s/:.*//' | sort | awk '{printf "  %-22s\n", $$1}'
 
-# --- Docker lifecycle -------------------------------------------------------
 
 ## up: build and start postgres + migrations + backend + frontend (one command)
 up:
 	docker compose up --build -d
+	$(MAKE) test-db
 
 ## down: stop containers and remove volumes
 down:
@@ -30,13 +32,11 @@ logs:
 ps:
 	docker compose ps
 
-# --- Tools ------------------------------------------------------------------
 
 ## tools: install the goose CLI (same version as the Docker image)
 tools:
 	go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
 
-# --- Migrations (goose) -----------------------------------------------------
 
 ## migrate-up: apply migrations locally (requires goose in PATH, see `make tools`)
 migrate-up:
@@ -68,7 +68,6 @@ migrate-status-docker:
 		-v "$(PWD)/$(MIGRATIONS):/migrations:ro" \
 		backend -dir /migrations postgres "$(DB_URL_DOCKER)" status
 
-# --- Seed -------------------------------------------------------------------
 
 ## seed: insert demo data locally
 seed:
@@ -82,7 +81,6 @@ seed-reset:
 seed-docker:
 	docker compose run --rm --entrypoint /app/seed backend -reset
 
-# --- Telegram bot -----------------------------------------------------------
 
 ## bot-commands: register the bot command menu in Telegram (reads .env locally)
 bot-commands:
@@ -96,11 +94,10 @@ bot-commands-show:
 bot-commands-docker:
 	docker compose run --rm --no-deps --entrypoint /app/botcommands backend
 
-# --- Local development ------------------------------------------------------
 
 ## run: run the backend locally
 run:
-	cd backend && go run ./cmd/server
+	cd backend && go run ./cmd/app
 
 ## web-dev: run the Vite dev server (proxies /api to :8080)
 web-dev:
@@ -110,7 +107,6 @@ web-dev:
 tunnel:
 	npx localtunnel --port 8080
 
-# --- Build / check ----------------------------------------------------------
 
 ## build: build backend binaries and the static frontend bundle
 build: build-backend build-frontend
@@ -121,15 +117,23 @@ build-frontend:
 
 ## build-backend: compile Go binaries into backend/bin
 build-backend:
-	cd backend && go build -o bin/server ./cmd/server && go build -o bin/seed ./cmd/seed
+	cd backend && go build -o bin/server ./cmd/app && go build -o bin/seed ./cmd/seed
 
-## test: run backend tests
-test:
-	cd backend && go test ./...
+## test-db: ensure the PostgreSQL test database exists and is migrated
+test-db:
+	docker compose up -d --wait postgres
+	@docker compose exec -T postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '\''$(TEST_DB_NAME)'\''" | grep -q 1 || psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "CREATE DATABASE $(TEST_DB_NAME)"'
+	docker compose run --rm --no-deps --entrypoint goose \
+		-v "$(PWD)/$(MIGRATIONS):/migrations:ro" \
+		backend -dir /migrations postgres "$(TEST_DB_URL_DOCKER)" up
 
-## test-integration: run PostgreSQL integration tests (TEST_DATABASE_URL must point to a throwaway migrated DB)
-test-integration:
-	cd backend && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./internal/store/ -run Postgres -v
+## test: run backend tests against the PostgreSQL test database
+test: test-db
+	cd backend && TEST_DATABASE_URL="$(TEST_DB_URL_LOCAL)" go test -p 1 ./...
+
+## test-integration: run PostgreSQL integration tests against the test database
+test-integration: test-db
+	cd backend && TEST_DATABASE_URL="$(TEST_DB_URL_LOCAL)" go test -p 1 ./internal/repo/persistent/ -run Postgres -v
 
 ## lint: run go vet and frontend typecheck
 lint:
@@ -155,5 +159,5 @@ env:
 .PHONY: help up down logs ps tools migrate-up migrate-down migrate-status \
 	migrate-up-docker migrate-down-docker migrate-status-docker seed seed-reset \
 	seed-docker run web-dev tunnel bot-commands bot-commands-show \
-	bot-commands-docker build build-frontend build-backend test test-integration \
+	bot-commands-docker build build-frontend build-backend test-db test test-integration \
 	lint fmt tidy clean env
