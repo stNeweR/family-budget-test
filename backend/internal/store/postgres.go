@@ -43,7 +43,7 @@ func (p *Postgres) Ping(ctx context.Context) error {
 
 // UpsertUser implements Store. Role columns are intentionally not part of the
 // insert or the conflict update, so refreshing a profile never resets a family
-// role, panel token or invite code.
+// role or invite code.
 func (p *Postgres) UpsertUser(ctx context.Context, user domain.User) error {
 	const q = `
 		INSERT INTO users (user_id, username, full_name)
@@ -59,7 +59,7 @@ func (p *Postgres) UpsertUser(ctx context.Context, user domain.User) error {
 }
 
 const userColumns = `user_id, username, full_name, invite_user_id,
-	COALESCE(panel_token, ''), COALESCE(invite_code, '')`
+	COALESCE(invite_code, '')`
 
 // GetUser implements Store.
 func (p *Postgres) GetUser(ctx context.Context, userID int64) (domain.User, error) {
@@ -111,14 +111,13 @@ func (p *Postgres) ListFamilyUsers(ctx context.Context, headID int64) ([]domain.
 }
 
 // BecomeHead implements Store.
-func (p *Postgres) BecomeHead(ctx context.Context, userID int64, inviteCode, panelToken string) error {
+func (p *Postgres) BecomeHead(ctx context.Context, userID int64, inviteCode string) error {
 	const q = `
 		UPDATE users
 		SET invite_user_id = NULL,
-		    invite_code = $2,
-		    panel_token = $3
+		    invite_code = $2
 		WHERE user_id = $1`
-	tag, err := p.pool.Exec(ctx, q, userID, inviteCode, panelToken)
+	tag, err := p.pool.Exec(ctx, q, userID, inviteCode)
 	if err != nil {
 		return fmt.Errorf("become head: %w", err)
 	}
@@ -133,8 +132,7 @@ func (p *Postgres) JoinFamily(ctx context.Context, userID, headID int64) error {
 	const q = `
 		UPDATE users
 		SET invite_user_id = $2,
-		    invite_code = NULL,
-		    panel_token = NULL
+		    invite_code = NULL
 		WHERE user_id = $1
 		  AND $1 <> $2
 		  AND EXISTS (
@@ -158,15 +156,6 @@ func (p *Postgres) GetHeadByInviteCode(ctx context.Context, code string) (domain
 	}
 	q := `SELECT ` + userColumns + ` FROM users WHERE invite_code = $1 AND invite_user_id IS NULL`
 	return scanUser(p.pool.QueryRow(ctx, q, code))
-}
-
-// GetHeadByPanelToken implements Store.
-func (p *Postgres) GetHeadByPanelToken(ctx context.Context, token string) (domain.User, error) {
-	if token == "" {
-		return domain.User{}, domain.ErrNotFound
-	}
-	q := `SELECT ` + userColumns + ` FROM users WHERE panel_token = $1 AND invite_user_id IS NULL`
-	return scanUser(p.pool.QueryRow(ctx, q, token))
 }
 
 // IsUserInFamily implements Store.
@@ -374,7 +363,7 @@ func scanUser(row rowScanner) (domain.User, error) {
 		u      domain.User
 		invite sql.NullInt64
 	)
-	err := row.Scan(&u.UserID, &u.Username, &u.FullName, &invite, &u.PanelToken, &u.InviteCode)
+	err := row.Scan(&u.UserID, &u.Username, &u.FullName, &invite, &u.InviteCode)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.User{}, domain.ErrNotFound

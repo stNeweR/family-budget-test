@@ -23,16 +23,14 @@ type Store interface {
 	// ListFamilyUsers returns the head and their members ordered by name.
 	ListFamilyUsers(ctx context.Context, headID int64) ([]domain.User, error)
 
-	// BecomeHead promotes the user to family head with fresh credentials.
-	BecomeHead(ctx context.Context, userID int64, inviteCode, panelToken string) error
+	// BecomeHead promotes the user to family head with a fresh invite code.
+	BecomeHead(ctx context.Context, userID int64, inviteCode string) error
 	// JoinFamily attaches the user to the head's family, dropping any head
 	// credentials. It returns domain.ErrNotFound when the user or the head
 	// does not exist, when the head is not a head, or on self-join.
 	JoinFamily(ctx context.Context, userID, headID int64) error
 	// GetHeadByInviteCode returns the head owning the invite code.
 	GetHeadByInviteCode(ctx context.Context, code string) (domain.User, error)
-	// GetHeadByPanelToken returns the head owning the panel token.
-	GetHeadByPanelToken(ctx context.Context, token string) (domain.User, error)
 	// IsUserInFamily reports whether the user belongs to the head's family.
 	IsUserInFamily(ctx context.Context, headID, userID int64) (bool, error)
 	// CountFamilyMembers returns the number of members (excluding the head).

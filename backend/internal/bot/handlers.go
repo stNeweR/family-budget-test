@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -43,7 +42,7 @@ func (s *Service) runCommand(ctx context.Context, user domain.User, cmd, args st
 	case "invite":
 		return s.runInvite(ctx, user)
 	case "panel":
-		return s.runPanel(ctx, user)
+		return s.runPanel(user), nil
 	default:
 		fmt.Printf("[bot] неизвестная команда /%s от %s\n", cmd, userLabel(user))
 		return commandsHelp(), nil
@@ -60,7 +59,7 @@ func (s *Service) runStart(ctx context.Context, user domain.User, payload string
 	}
 
 	if payload == "" {
-		stored, err = s.ensureHeadCredentials(ctx, stored)
+		stored, err = s.ensureHeadCode(ctx, stored)
 		if err != nil {
 			return "", err
 		}
@@ -82,7 +81,7 @@ func (s *Service) runStart(ctx context.Context, user domain.User, payload string
 	}
 	if store.IsNotFound(err) {
 		fmt.Printf("[bot] /start: %s, код %q не найден\n", userLabel(user), payload)
-		if _, err := s.ensureHeadCredentials(ctx, stored); err != nil {
+		if _, err := s.ensureHeadCode(ctx, stored); err != nil {
 			return "", err
 		}
 		return "Ссылка приглашения недействительна или устарела.\n\n" + headWelcome(user), nil
@@ -128,7 +127,7 @@ func (s *Service) runInvite(ctx context.Context, user domain.User) (string, erro
 
 	head := stored
 	if head.IsHead() {
-		head, err = s.ensureHeadCredentials(ctx, head)
+		head, err = s.ensureHeadCode(ctx, head)
 		if err != nil {
 			return "", err
 		}
@@ -155,46 +154,28 @@ func (s *Service) runInvite(ctx context.Context, user domain.User) (string, erro
 		userLabel(head), link), nil
 }
 
-// runPanel returns the web panel link. Only the head may open the panel.
-func (s *Service) runPanel(ctx context.Context, user domain.User) (string, error) {
-	stored, err := s.store.GetUser(ctx, user.UserID)
-	if err != nil {
-		return "", err
-	}
-	if !stored.IsHead() {
-		fmt.Printf("[bot] /panel от участника %s — отказ\n", userLabel(user))
-		return "Панель расходов доступна только главе семьи. Попросите главу прислать ссылку.", nil
-	}
-
-	stored, err = s.ensureHeadCredentials(ctx, stored)
-	if err != nil {
-		return "", err
-	}
+// runPanel returns the public web panel link; no authorization is needed.
+func (s *Service) runPanel(user domain.User) string {
 	fmt.Printf("[bot] /panel: ссылка выдана %s\n", userLabel(user))
-	return fmt.Sprintf("Панель расходов вашей семьи:\n%s/?token=%s\n\nСсылка даёт доступ без пароля — не пересылайте её посторонним.",
-		strings.TrimRight(s.panelURL, "/"), stored.PanelToken), nil
+	return fmt.Sprintf("Веб-панель расходов:\n%s", strings.TrimRight(s.panelURL, "/"))
 }
 
-// ensureHeadCredentials generates the invite code and panel token for a head
-// who does not have them yet (e.g. accounts created before the family model
-// existed). Members are returned untouched.
-func (s *Service) ensureHeadCredentials(ctx context.Context, user domain.User) (domain.User, error) {
-	if !user.IsHead() || (user.InviteCode != "" && user.PanelToken != "") {
+// ensureHeadCode generates the invite code for a head who does not have one
+// yet (e.g. accounts created before the family model existed). Members are
+// returned untouched.
+func (s *Service) ensureHeadCode(ctx context.Context, user domain.User) (domain.User, error) {
+	if !user.IsHead() || user.InviteCode != "" {
 		return user, nil
 	}
 	code, err := newInviteCode()
 	if err != nil {
 		return domain.User{}, err
 	}
-	token, err := newPanelToken()
-	if err != nil {
+	if err := s.store.BecomeHead(ctx, user.UserID, code); err != nil {
 		return domain.User{}, err
 	}
-	if err := s.store.BecomeHead(ctx, user.UserID, code, token); err != nil {
-		return domain.User{}, err
-	}
-	user.InviteCode, user.PanelToken = code, token
-	fmt.Printf("[bot] сгенерированы креденшелы главы для %s\n", userLabel(user))
+	user.InviteCode = code
+	fmt.Printf("[bot] сгенерирован код приглашения для %s\n", userLabel(user))
 	return user, nil
 }
 
@@ -255,13 +236,4 @@ func newInviteCode() (string, error) {
 		buf[i] = inviteCodeAlphabet[int(b)%len(inviteCodeAlphabet)]
 	}
 	return string(buf), nil
-}
-
-// newPanelToken returns a random secret that unlocks the web panel.
-func newPanelToken() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate panel token: %w", err)
-	}
-	return hex.EncodeToString(buf), nil
 }

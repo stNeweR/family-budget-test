@@ -44,12 +44,9 @@ var demoMembers = []domain.User{
 	{UserID: 1000000005, Username: "baba", FullName: "Людмила Петрова"},
 }
 
-// Fixed credentials of the demo head so the seeded panel can be opened
+// Fixed invite code of the demo head so the seeded family can be explored
 // without a real Telegram bot.
-const (
-	devInviteCode = "dev-invite-code"
-	devPanelToken = "dev-panel-token"
-)
+const devInviteCode = "dev-invite-code"
 
 func main() {
 	var (
@@ -106,7 +103,7 @@ func run(reset bool, usersCount, perUser, days int, seed int64) error {
 
 	// The first member is the head of the family; the rest join through him.
 	head := members[0]
-	if err := st.BecomeHead(ctx, head.UserID, devInviteCode, devPanelToken); err != nil {
+	if err := st.BecomeHead(ctx, head.UserID, devInviteCode); err != nil {
 		return err
 	}
 	for _, member := range members[1:] {
@@ -140,7 +137,7 @@ func run(reset bool, usersCount, perUser, days int, seed int64) error {
 		len(members), created, seed, days)
 	fmt.Printf("глава семьи: %s (id=%d), участников: %d\n", head.FullName, head.UserID, len(members)-1)
 	fmt.Printf("код приглашения: %s\n", devInviteCode)
-	fmt.Printf("панель главы: %s/?token=%s\n", cfg.PanelURL, devPanelToken)
+	fmt.Printf("панель расходов: %s\n", cfg.PanelURL)
 	return nil
 }
 

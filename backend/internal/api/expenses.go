@@ -31,30 +31,9 @@ type expensePatchInput struct {
 }
 
 func (s *Server) listExpenses(w http.ResponseWriter, r *http.Request) {
-	head, scoped := headFrom(r.Context())
 	filter, err := parseFilter(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if scoped {
-		if filter.UserID != nil && *filter.UserID != head.UserID {
-			ok, err := s.canAccessExpense(r.Context(), head, *filter.UserID)
-			if err != nil {
-				writeStoreError(w, err)
-				return
-			}
-			if !ok {
-				writeError(w, http.StatusBadRequest, "user_id is not in your family")
-				return
-			}
-		}
-		expenses, err := s.store.ListFamilyExpenses(r.Context(), head.UserID, filter)
-		if err != nil {
-			writeStoreError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, expenses)
 		return
 	}
 	expenses, err := s.store.ListExpenses(r.Context(), filter)
@@ -66,7 +45,6 @@ func (s *Server) listExpenses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
-	head, scoped := headFrom(r.Context())
 	var in expenseInput
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -76,17 +54,6 @@ func (s *Server) createExpense(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if scoped {
-		ok, err := s.canAccessExpense(r.Context(), head, expense.UserID)
-		if err != nil {
-			writeStoreError(w, err)
-			return
-		}
-		if !ok {
-			writeError(w, http.StatusForbidden, "user_id is not in your family")
-			return
-		}
 	}
 	if err := s.store.CreateExpense(r.Context(), &expense); err != nil {
 		writeStoreError(w, err)
@@ -100,8 +67,9 @@ func (s *Server) getExpense(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	expense, ok := s.loadAccessibleExpense(w, r, id)
-	if !ok {
+	expense, err := s.store.GetExpense(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, expense)
@@ -110,9 +78,6 @@ func (s *Server) getExpense(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateExpense(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r)
 	if !ok {
-		return
-	}
-	if _, ok := s.loadAccessibleExpense(w, r, id); !ok {
 		return
 	}
 	var in expensePatchInput
@@ -138,9 +103,6 @@ func (s *Server) deleteExpense(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := s.loadAccessibleExpense(w, r, id); !ok {
-		return
-	}
 	if err := s.store.DeleteExpense(r.Context(), id); err != nil {
 		writeStoreError(w, err)
 		return
@@ -149,16 +111,7 @@ func (s *Server) deleteExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
-	head, scoped := headFrom(r.Context())
-	var (
-		users []domain.User
-		err   error
-	)
-	if scoped {
-		users, err = s.store.ListFamilyUsers(r.Context(), head.UserID)
-	} else {
-		users, err = s.store.ListUsers(r.Context())
-	}
+	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
 		writeStoreError(w, err)
 		return

@@ -49,7 +49,7 @@ func TestPostgresFamilyFlow(t *testing.T) {
 	mustUpsert(domain.User{UserID: 2, Username: "papa", FullName: "Игорь"})
 	mustUpsert(domain.User{UserID: 5, Username: "other", FullName: "Чужой"})
 
-	if err := st.BecomeHead(ctx, 1, "HEADCODE01", "paneltoken1"); err != nil {
+	if err := st.BecomeHead(ctx, 1, "HEADCODE01"); err != nil {
 		t.Fatalf("become head: %v", err)
 	}
 	if err := st.JoinFamily(ctx, 2, 1); err != nil {
@@ -64,7 +64,7 @@ func TestPostgresFamilyFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get user: %v", err)
 	}
-	if !head.IsHead() || head.InviteCode != "HEADCODE01" || head.PanelToken != "paneltoken1" {
+	if !head.IsHead() || head.InviteCode != "HEADCODE01" {
 		t.Fatalf("head credentials lost: %+v", head)
 	}
 	if head.FullName != "Анна П." {
@@ -75,15 +75,8 @@ func TestPostgresFamilyFlow(t *testing.T) {
 	if err != nil || byCode.UserID != 1 {
 		t.Fatalf("head by code: %+v, %v", byCode, err)
 	}
-	byToken, err := st.GetHeadByPanelToken(ctx, "paneltoken1")
-	if err != nil || byToken.UserID != 1 {
-		t.Fatalf("head by token: %+v, %v", byToken, err)
-	}
 	if _, err := st.GetHeadByInviteCode(ctx, "unknown"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("unknown code: got %v, want ErrNotFound", err)
-	}
-	if _, err := st.GetHeadByPanelToken(ctx, ""); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("empty token: got %v, want ErrNotFound", err)
 	}
 
 	family, err := st.ListFamilyUsers(ctx, 1)
@@ -118,7 +111,7 @@ func TestPostgresFamilyFlow(t *testing.T) {
 	}
 
 	// The member moves to another family; stale lookups must stop working.
-	if err := st.BecomeHead(ctx, 5, "HEADCODE05", "paneltoken5"); err != nil {
+	if err := st.BecomeHead(ctx, 5, "HEADCODE05"); err != nil {
 		t.Fatalf("become head 5: %v", err)
 	}
 	if err := st.JoinFamily(ctx, 2, 5); err != nil {

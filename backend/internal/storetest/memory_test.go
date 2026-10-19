@@ -17,12 +17,12 @@ func addUser(t *testing.T, st *Memory, id int64, name string) {
 	}
 }
 
-// addHead creates a user and promotes them to head with unique credentials.
+// addHead creates a user and promotes them to head with a unique invite code.
 func addHead(t *testing.T, st *Memory, id int64) string {
 	t.Helper()
 	code := fmt.Sprintf("code-%d", id)
 	addUser(t, st, id, "Глава")
-	if err := st.BecomeHead(context.Background(), id, code, fmt.Sprintf("token-%d", id)); err != nil {
+	if err := st.BecomeHead(context.Background(), id, code); err != nil {
 		t.Fatalf("become head %d: %v", id, err)
 	}
 	return code
@@ -33,7 +33,7 @@ func TestUpsertUserPreservesFamilyRole(t *testing.T) {
 	st := New()
 
 	addUser(t, st, 1, "Анна")
-	if err := st.BecomeHead(ctx, 1, "code-1", "token-1"); err != nil {
+	if err := st.BecomeHead(ctx, 1, "code-1"); err != nil {
 		t.Fatalf("become head: %v", err)
 	}
 	addUser(t, st, 2, "Игорь")
@@ -53,7 +53,7 @@ func TestUpsertUserPreservesFamilyRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get head: %v", err)
 	}
-	if !head.IsHead() || head.InviteCode != "code-1" || head.PanelToken != "token-1" {
+	if !head.IsHead() || head.InviteCode != "code-1" {
 		t.Fatalf("head credentials lost: %+v", head)
 	}
 	if head.FullName != "Анна П." || head.Username != "mama" {
@@ -89,15 +89,12 @@ func TestJoinFamilyClearsHeadCredentials(t *testing.T) {
 	if joined.InviteUserID == nil || *joined.InviteUserID != 1 {
 		t.Fatalf("invite_user_id not set: %+v", joined)
 	}
-	if joined.InviteCode != "" || joined.PanelToken != "" {
+	if joined.InviteCode != "" {
 		t.Fatalf("head credentials not cleared: %+v", joined)
 	}
 
 	if _, err := st.GetHeadByInviteCode(ctx, oldCode); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("stale invite code still resolves: %v", err)
-	}
-	if _, err := st.GetHeadByPanelToken(ctx, "token-2"); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("stale panel token still resolves: %v", err)
 	}
 }
 
@@ -238,18 +235,11 @@ func TestHeadLookups(t *testing.T) {
 	if err != nil || head.UserID != 1 {
 		t.Fatalf("GetHeadByInviteCode: %+v, %v", head, err)
 	}
-	head, err = st.GetHeadByPanelToken(ctx, "token-1")
-	if err != nil || head.UserID != 1 {
-		t.Fatalf("GetHeadByPanelToken: %+v, %v", head, err)
-	}
 
 	for _, unknown := range []string{"", "unknown"} {
 		if _, err := st.GetHeadByInviteCode(ctx, unknown); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("code %q: got %v, want ErrNotFound", unknown, err)
 		}
-	}
-	if _, err := st.GetHeadByPanelToken(ctx, ""); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("empty token: got %v, want ErrNotFound", err)
 	}
 }
 

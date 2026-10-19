@@ -90,7 +90,7 @@ func (m *Memory) ListFamilyUsers(_ context.Context, headID int64) ([]domain.User
 }
 
 // BecomeHead implements store.Store.
-func (m *Memory) BecomeHead(_ context.Context, userID int64, inviteCode, panelToken string) error {
+func (m *Memory) BecomeHead(_ context.Context, userID int64, inviteCode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	u, ok := m.users[userID]
@@ -99,7 +99,6 @@ func (m *Memory) BecomeHead(_ context.Context, userID int64, inviteCode, panelTo
 	}
 	u.InviteUserID = nil
 	u.InviteCode = inviteCode
-	u.PanelToken = panelToken
 	m.users[userID] = u
 	return nil
 }
@@ -119,7 +118,6 @@ func (m *Memory) JoinFamily(_ context.Context, userID, headID int64) error {
 	invite := headID
 	u.InviteUserID = &invite
 	u.InviteCode = ""
-	u.PanelToken = ""
 	m.users[userID] = u
 	return nil
 }
@@ -127,11 +125,6 @@ func (m *Memory) JoinFamily(_ context.Context, userID, headID int64) error {
 // GetHeadByInviteCode implements store.Store.
 func (m *Memory) GetHeadByInviteCode(_ context.Context, code string) (domain.User, error) {
 	return m.findHead(func(u domain.User) bool { return u.InviteCode == code && code != "" })
-}
-
-// GetHeadByPanelToken implements store.Store.
-func (m *Memory) GetHeadByPanelToken(_ context.Context, token string) (domain.User, error) {
-	return m.findHead(func(u domain.User) bool { return u.PanelToken == token && token != "" })
 }
 
 func (m *Memory) findHead(match func(domain.User) bool) (domain.User, error) {

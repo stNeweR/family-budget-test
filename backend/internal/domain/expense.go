@@ -49,8 +49,6 @@ type User struct {
 	Username     string `json:"username"`
 	FullName     string `json:"full_name"`
 	InviteUserID *int64 `json:"invite_user_id,omitempty"`
-	// PanelToken unlocks the web panel for the head and must never be exposed.
-	PanelToken string `json:"-"`
 	// InviteCode is the payload of the head's invitation deep link.
 	InviteCode string `json:"-"`
 }

@@ -344,13 +344,13 @@ func startUpdate(userID int64, text string) telegram.Update {
 	}
 }
 
-func seedFamily(t *testing.T, st *storetest.Memory, headID, memberID int64, code, token string) {
+func seedFamily(t *testing.T, st *storetest.Memory, headID, memberID int64, code string) {
 	t.Helper()
 	ctx := context.Background()
 	if err := st.UpsertUser(ctx, domain.User{UserID: headID, FullName: "Анна"}); err != nil {
 		t.Fatalf("upsert head: %v", err)
 	}
-	if err := st.BecomeHead(ctx, headID, code, token); err != nil {
+	if err := st.BecomeHead(ctx, headID, code); err != nil {
 		t.Fatalf("become head: %v", err)
 	}
 	if memberID == 0 {
@@ -383,15 +383,15 @@ func TestStartMakesNewUserHead(t *testing.T) {
 	if !u.IsHead() {
 		t.Fatalf("user must be a head: %+v", u)
 	}
-	if len(u.InviteCode) != inviteCodeLength || u.PanelToken == "" {
-		t.Fatalf("credentials not generated: %+v", u)
+	if len(u.InviteCode) != inviteCodeLength {
+		t.Fatalf("invite code not generated: %+v", u)
 	}
 }
 
 func TestStartKeepsMemberRole(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1")
+	seedFamily(t, st, 1, 2, "HEADCODE01")
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
 
@@ -410,10 +410,10 @@ func TestStartKeepsMemberRole(t *testing.T) {
 func TestStartWithCodeJoinsFamilyAndDropsHeadRole(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 0, "HEADCODE01", "token-1")
+	seedFamily(t, st, 1, 0, "HEADCODE01")
 	// User 2 became a head of a one-person family by accident.
 	_ = st.UpsertUser(ctx, domain.User{UserID: 2, FullName: "Игорь"})
-	_ = st.BecomeHead(ctx, 2, "OWNCODE001", "token-2")
+	_ = st.BecomeHead(ctx, 2, "OWNCODE001")
 
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
@@ -427,7 +427,7 @@ func TestStartWithCodeJoinsFamilyAndDropsHeadRole(t *testing.T) {
 	if u.InviteUserID == nil || *u.InviteUserID != 1 {
 		t.Fatalf("user not joined: %+v", u)
 	}
-	if u.InviteCode != "" || u.PanelToken != "" {
+	if u.InviteCode != "" {
 		t.Fatalf("head credentials must be dropped: %+v", u)
 	}
 }
@@ -453,7 +453,7 @@ func TestStartWithUnknownCodeFallsBackToHead(t *testing.T) {
 func TestStartWithOwnCode(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 0, "HEADCODE01", "token-1")
+	seedFamily(t, st, 1, 0, "HEADCODE01")
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
 
@@ -472,8 +472,8 @@ func TestStartWithOwnCode(t *testing.T) {
 func TestStartHeadWithMembersCannotJoin(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1") // head 1 has member 2
-	seedFamily(t, st, 5, 0, "HEADCODE05", "token-5")
+	seedFamily(t, st, 1, 2, "HEADCODE01") // head 1 has member 2
+	seedFamily(t, st, 5, 0, "HEADCODE05")
 
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
@@ -492,7 +492,7 @@ func TestStartHeadWithMembersCannotJoin(t *testing.T) {
 func TestInviteAlwaysPointsToHead(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 2, "HEADCODE01", "token-1")
+	seedFamily(t, st, 1, 2, "HEADCODE01")
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
 
@@ -527,28 +527,27 @@ func TestInviteActivatesLegacyHead(t *testing.T) {
 		t.Fatalf("unexpected reply: %q", reply)
 	}
 	u, _ := st.GetUser(ctx, 7)
-	if u.InviteCode == "" || u.PanelToken == "" {
-		t.Fatalf("credentials not generated for legacy head: %+v", u)
+	if u.InviteCode == "" {
+		t.Fatalf("invite code not generated for legacy head: %+v", u)
 	}
 }
 
-func TestPanelForHeadAndMember(t *testing.T) {
+func TestPanelLinkForEveryone(t *testing.T) {
 	ctx := t.Context()
 	st := storetest.New()
-	seedFamily(t, st, 1, 2, "HEADCODE01", "PANELTOKEN1")
+	seedFamily(t, st, 1, 2, "HEADCODE01")
 	tg := &fakeTelegram{}
 	svc := newServiceWithSteps(t, st, tg, nil)
 
-	svc.process(ctx, startUpdate(1, "/panel"))
-	headReply := tg.lastMessage().Text
-	if !strings.Contains(headReply, "http://panel.test/?token=PANELTOKEN1") {
-		t.Fatalf("unexpected head panel reply: %q", headReply)
-	}
-
-	svc.process(ctx, startUpdate(2, "/panel"))
-	memberReply := tg.lastMessage().Text
-	if !strings.Contains(memberReply, "только главе") {
-		t.Fatalf("unexpected member panel reply: %q", memberReply)
+	for _, userID := range []int64{1, 2} {
+		svc.process(ctx, startUpdate(userID, "/panel"))
+		reply := tg.lastMessage().Text
+		if !strings.Contains(reply, "http://panel.test") {
+			t.Fatalf("user %d: unexpected panel reply: %q", userID, reply)
+		}
+		if strings.Contains(reply, "token") {
+			t.Fatalf("user %d: panel link must not contain a token: %q", userID, reply)
+		}
 	}
 }
 

@@ -18,7 +18,7 @@ type Command struct {
 var Commands = []Command{
 	{Name: "start", Description: "Зарегистрироваться и создать семью"},
 	{Name: "invite", Description: "Ссылка-приглашение в семью"},
-	{Name: "panel", Description: "Веб-панель расходов (только для главы)"},
+	{Name: "panel", Description: "Веб-панель расходов"},
 }
 
 // CommandList converts Commands into the Bot API payload.
