@@ -119,7 +119,7 @@ make seed-docker             # или: docker compose run --rm --entrypoint /app
   `200` сразу (обработка асинхронная) и вызывает `setWebhook` на
   `<TELEGRAM_WEBHOOK_URL><TELEGRAM_WEBHOOK_PATH>`.
 
-Для webhook-режима нужен публичный HTTPS-URL, например через (localtunnel)[https://theboroer.github.io/localtunnel-www/], (serveo)[https://serveo.net/] или (ngrok)[https://ngrok.com/]:
+Для webhook-режима нужен публичный HTTPS-URL, например через [localtunnel](https://theboroer.github.io/localtunnel-www/), [serveo](https://serveo.net/) или [ngrok](https://ngrok.com/):
 
 ```bash
 make tunnel    # npx localtunnel --port 8080
