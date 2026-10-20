@@ -32,6 +32,7 @@ type TelegramAPI interface {
 	SendMessage(ctx context.Context, params tgapi.SendMessageParams) (tgapi.Message, error)
 	SetWebhook(ctx context.Context, params tgapi.SetWebhookParams) error
 	DeleteWebhook(ctx context.Context, dropPending bool) error
+	DeleteMessage(ctx context.Context, params tgapi.DeleteMessageParams) error
 	GetUpdates(ctx context.Context, params tgapi.GetUpdatesParams) ([]tgapi.Update, error)
 	GetMe(ctx context.Context) (tgapi.User, error)
 }
@@ -194,25 +195,64 @@ func (s *Service) process(ctx context.Context, update tgapi.Update) {
 	fmt.Printf("[bot] сообщение от %s (id=%d): %s\n", userLabel(user), user.UserID, clip(text, 200))
 
 	var reply string
+	var placeholderID int64
 	if cmd, args := parseCommand(text); cmd != "" {
 		reply = s.handleCommand(ctx, user, cmd, args)
 	} else {
-		start := time.Now()
+		type sentMessage struct {
+			msg tgapi.Message
+			err error
+		}
+		
+		placeholderCh := make(chan sentMessage, 1)
+
+		go func () {
+			sentMsg, sendErr := s.tg.SendMessage(ctx, tgapi.SendMessageParams{
+				ChatID:           msg.Chat.ID,
+				Text:             "Запрос в обработке...",
+				ReplyToMessageID: msg.MessageID,
+			})
+
+			placeholderCh <- sentMessage{
+				msg: sentMsg,
+				err: sendErr,
+			}
+		}()
+
 		var err error
 		reply, err = s.agent.Handle(ctx, user, text)
 		if err != nil {
 			s.log.Error("agent handle", "user_id", user.UserID, "error", err)
 			reply = "Извините, не удалось обработать запрос. Попробуйте ещё раз."
 		}
-		fmt.Printf("[bot] ответ (%s, %s): %s\n", userLabel(user), time.Since(start).Round(time.Millisecond), clip(reply, 300))
+
+		sent := <- placeholderCh
+		if sent.err != nil {
+			s.log.Error("send processing message", "error", sent.err)
+		} else {
+			placeholderID = sent.msg.MessageID
+		}
 	}
 
-	if _, err := s.tg.SendMessage(ctx, tgapi.SendMessageParams{
+	sendCtx, cancelSend := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancelSend()
+
+	if _, err := s.tg.SendMessage(sendCtx, tgapi.SendMessageParams{
 		ChatID:           msg.Chat.ID,
 		Text:             reply,
 		ReplyToMessageID: msg.MessageID,
 	}); err != nil {
 		s.log.Error("send message", "chat_id", msg.Chat.ID, "error", err)
+		return
+	}
+
+	if placeholderID != 0 {
+		if err := s.tg.DeleteMessage(sendCtx, tgapi.DeleteMessageParams{
+			ChatID:    msg.Chat.ID,
+			MessageID: placeholderID,
+		}); err != nil {
+			s.log.Error("delete processing message", "chat_id", msg.Chat.ID, "message_id", placeholderID, "error", err)
+		}
 	}
 }
 

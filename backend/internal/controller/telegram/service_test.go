@@ -21,15 +21,19 @@ import (
 )
 
 type fakeTelegram struct {
-	mu             sync.Mutex
-	sent           []tgapi.SendMessageParams
-	webhook        tgapi.SetWebhookParams
-	deleted        []bool
-	deleteFailures int
-	batches        [][]tgapi.Update
-	getUpdates     []tgapi.GetUpdatesParams
-	getMeCalls     int
-	getMeErr       error
+	mu                 sync.Mutex
+	sent               []tgapi.SendMessageParams
+	webhook            tgapi.SetWebhookParams
+	deleted            []bool
+	deletedMessages    []tgapi.DeleteMessageParams
+	deleteMessageErr   error
+	deleteMessageCalls int
+	deleteFailures     int
+	batches            [][]tgapi.Update
+	getUpdates         []tgapi.GetUpdatesParams
+	getMeCalls         int
+	getMeErr           error
+	nextMessageID      int64
 }
 
 func (f *fakeTelegram) GetMe(context.Context) (tgapi.User, error) {
@@ -45,8 +49,20 @@ func (f *fakeTelegram) GetMe(context.Context) (tgapi.User, error) {
 func (f *fakeTelegram) SendMessage(_ context.Context, params tgapi.SendMessageParams) (tgapi.Message, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.nextMessageID++
 	f.sent = append(f.sent, params)
-	return tgapi.Message{MessageID: 999, Text: params.Text}, nil
+	return tgapi.Message{MessageID: f.nextMessageID, Text: params.Text}, nil
+}
+
+func (f *fakeTelegram) DeleteMessage(_ context.Context, params tgapi.DeleteMessageParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteMessageCalls++
+	if f.deleteMessageErr != nil {
+		return f.deleteMessageErr
+	}
+	f.deletedMessages = append(f.deletedMessages, params)
+	return nil
 }
 
 func (f *fakeTelegram) SetWebhook(_ context.Context, params tgapi.SetWebhookParams) error {
@@ -218,12 +234,26 @@ func TestProcessRepliesToUser(t *testing.T) {
 	}
 	svc.process(ctx, update)
 
+	if len(tg.sent) != 2 {
+		t.Fatalf("expected processing and result messages, got %+v", tg.sent)
+	}
+	if tg.sent[0].Text != "Запрос в обработке..." || tg.sent[0].ReplyToMessageID != 42 {
+		t.Fatalf("unexpected processing message: %+v", tg.sent[0])
+	}
+
 	got := tg.lastMessage()
 	if got.ChatID != 100 || got.ReplyToMessageID != 42 {
 		t.Fatalf("unexpected send params: %+v", got)
 	}
 	if got.Text != "Записал 350 ₽." {
 		t.Fatalf("unexpected reply text: %q", got.Text)
+	}
+
+	if len(tg.deletedMessages) != 1 {
+		t.Fatalf("expected processing message to be deleted, got %+v", tg.deletedMessages)
+	}
+	if tg.deletedMessages[0].ChatID != 100 || tg.deletedMessages[0].MessageID != 1 {
+		t.Fatalf("unexpected delete params: %+v", tg.deletedMessages[0])
 	}
 
 	expenses, err := env.Expenses.ListExpenses(ctx, entity.ExpenseFilter{})
@@ -237,6 +267,46 @@ func TestProcessRepliesToUser(t *testing.T) {
 	users, _ := env.Users.ListUsers(ctx)
 	if len(users) != 1 || users[0].Username != "mama" || users[0].FullName != "Мама" {
 		t.Fatalf("user not registered: %+v", users)
+	}
+}
+
+func TestProcessSendsResultWhenDeleteFails(t *testing.T) {
+	ctx := t.Context()
+	env := testsupport.NewEnv(t)
+	tg := &fakeTelegram{deleteMessageErr: errors.New("delete failed")}
+	svc := newServiceWithSteps(t, env, tg, []entity.Message{
+		textMessage("Записал 350 ₽."),
+	})
+
+	svc.process(ctx, startUpdate(1, "кофе 350"))
+
+	if len(tg.sent) != 2 {
+		t.Fatalf("expected processing and result messages, got %+v", tg.sent)
+	}
+	if got := tg.lastMessage(); got.Text != "Записал 350 ₽." {
+		t.Fatalf("unexpected reply text: %q", got.Text)
+	}
+	if tg.deleteMessageCalls != 1 {
+		t.Fatalf("expected one delete attempt, got %d", tg.deleteMessageCalls)
+	}
+}
+
+func TestProcessCleansPlaceholderOnAgentError(t *testing.T) {
+	ctx := t.Context()
+	env := testsupport.NewEnv(t)
+	tg := &fakeTelegram{}
+	svc := newServiceWithSteps(t, env, tg, nil)
+
+	svc.process(ctx, startUpdate(1, "кофе 350"))
+
+	if len(tg.sent) != 2 {
+		t.Fatalf("expected processing and error messages, got %+v", tg.sent)
+	}
+	if got := tg.lastMessage(); !strings.Contains(got.Text, "не удалось обработать") {
+		t.Fatalf("unexpected error reply: %q", got.Text)
+	}
+	if len(tg.deletedMessages) != 1 {
+		t.Fatalf("expected placeholder to be deleted, got %+v", tg.deletedMessages)
 	}
 }
 
@@ -267,6 +337,9 @@ func TestStartCommandRegistersUserWithoutLLM(t *testing.T) {
 	}
 	if llmStub.calls != 0 {
 		t.Fatalf("LLM must not be called for /start, got %d calls", llmStub.calls)
+	}
+	if len(tg.sent) != 1 || len(tg.deletedMessages) != 0 {
+		t.Fatalf("commands must not use processing placeholder: sent=%d deleted=%d", len(tg.sent), len(tg.deletedMessages))
 	}
 
 	users, err := env.Users.ListUsers(ctx)

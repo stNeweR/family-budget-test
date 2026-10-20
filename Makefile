@@ -1,9 +1,15 @@
 SHELL := /bin/bash
 
-DB_URL_LOCAL      ?= postgres://family:family@localhost:5432/family?sslmode=disable
+POSTGRES_PORT ?= $(shell sed -n 's/^POSTGRES_PORT=//p' .env 2>/dev/null | tail -n1 | tr -d '"\r')
+ifeq ($(strip $(POSTGRES_PORT)),)
+POSTGRES_PORT := 5432
+endif
+export POSTGRES_PORT
+
+DB_URL_LOCAL      ?= postgres://family:family@localhost:$(POSTGRES_PORT)/family?sslmode=disable
 DB_URL_DOCKER     ?= postgres://family:family@postgres:5432/family?sslmode=disable
 TEST_DB_NAME      ?= family_test
-TEST_DB_URL_LOCAL ?= postgres://family:family@localhost:5432/family_test?sslmode=disable
+TEST_DB_URL_LOCAL ?= postgres://family:family@localhost:$(POSTGRES_PORT)/family_test?sslmode=disable
 TEST_DB_URL_DOCKER ?= postgres://family:family@postgres:5432/family_test?sslmode=disable
 MIGRATIONS        ?= backend/migrations
 

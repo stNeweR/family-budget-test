@@ -44,6 +44,11 @@ func (c *Client) SendMessage(ctx context.Context, params SendMessageParams) (Mes
 	return do[Message](ctx, c, "sendMessage", params)
 }
 
+func (c *Client) DeleteMessage(ctx context.Context, params DeleteMessageParams) error {
+	_, err := do[bool](ctx, c, "deleteMessage", params)
+	return err
+}
+
 func (c *Client) SetWebhook(ctx context.Context, params SetWebhookParams) error {
 	_, err := do[bool](ctx, c, "setWebhook", params)
 	return err

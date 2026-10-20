@@ -67,6 +67,11 @@ type SendMessageParams struct {
 	DisableWebPagePreview bool   `json:"disable_web_page_preview,omitempty"`
 }
 
+type DeleteMessageParams struct {
+	ChatID    int64 `json:"chat_id"`
+	MessageID int64 `json:"message_id"`
+}
+
 type SetWebhookParams struct {
 	URL                string   `json:"url"`
 	SecretToken        string   `json:"secret_token,omitempty"`

@@ -39,6 +39,28 @@ func TestSendMessageSuccess(t *testing.T) {
 	}
 }
 
+func TestDeleteMessageSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/botTOKEN/deleteMessage" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var body DeleteMessageParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if body.ChatID != 5 || body.MessageID != 7 {
+			t.Errorf("unexpected payload: %+v", body)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("TOKEN", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	if err := c.DeleteMessage(context.Background(), DeleteMessageParams{ChatID: 5, MessageID: 7}); err != nil {
+		t.Fatalf("DeleteMessage: %v", err)
+	}
+}
+
 func TestSendMessageAPIErrorWithRetryAfter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
